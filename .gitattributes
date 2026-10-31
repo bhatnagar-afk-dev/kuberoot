@@ -1,0 +1,6 @@
+* text=auto eol=lf
+frontend/bindings/** linguist-generated=true
+*.png binary
+*.ico binary
+*.icns binary
+*.car binary

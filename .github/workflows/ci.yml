@@ -1,0 +1,85 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  WAILS_VERSION: v3.0.0
+
+jobs:
+  lint-test:
+    name: Lint & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install Linux webview deps
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+      - name: Install frontend deps
+        run: npm ci --prefix frontend
+      # main.go embeds frontend/dist, so it must exist before vet/lint/test.
+      - name: Build frontend
+        run: npm run build --prefix frontend
+      - name: golangci-lint
+        uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+      - name: Go tests
+        run: go test -race -coverprofile=coverage.out ./...
+      - name: Frontend type-check
+        run: npm run check --prefix frontend
+      - name: Check bindings are up to date
+        run: |
+          go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
+          wails3 generate bindings -clean=true -ts -i
+          git diff --exit-code -- frontend/bindings || {
+            echo "::error::frontend/bindings is stale. Run 'wails3 generate bindings -ts -i' and commit."
+            exit 1
+          }
+
+  build:
+    name: Build (${{ matrix.os }})
+    needs: lint-test
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install Linux webview deps
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
+      - name: Install Wails CLI
+        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
+      - name: Build
+        run: wails3 build
+      - uses: actions/upload-artifact@v4
+        with:
+          name: kuberoot-${{ runner.os }}
+          path: bin/
+          retention-days: 7

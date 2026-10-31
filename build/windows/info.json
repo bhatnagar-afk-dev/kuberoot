@@ -1,0 +1,15 @@
+{
+	"fixed": {
+		"file_version": "0.1.0"
+	},
+	"info": {
+		"0409": {
+			"ProductVersion": "0.1.0",
+			"CompanyName": "KubeRoot Authors",
+			"FileDescription": "Open-source cross-platform Kubernetes desktop client",
+			"LegalCopyright": "© 2026 The KubeRoot Authors",
+			"ProductName": "KubeRoot",
+			"Comments": "KubeRoot"
+		}
+	}
+}
