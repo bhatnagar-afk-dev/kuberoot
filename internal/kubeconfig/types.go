@@ -13,6 +13,7 @@ import (
 // SourceKind says whether a source is a single file or a folder to scan.
 type SourceKind string
 
+// Source kinds.
 const (
 	KindFile   SourceKind = "file"
 	KindFolder SourceKind = "folder"
@@ -21,6 +22,7 @@ const (
 // SourceOrigin says where a source came from.
 type SourceOrigin string
 
+// Source origins.
 const (
 	OriginEnv     SourceOrigin = "env"     // listed in $KUBECONFIG
 	OriginDefault SourceOrigin = "default" // ~/.kube/config or the ~/.kube folder
@@ -46,6 +48,7 @@ type Source struct {
 // AuthType classifies how a context authenticates.
 type AuthType string
 
+// Authentication types.
 const (
 	AuthToken        AuthType = "token"
 	AuthCert         AuthType = "cert"

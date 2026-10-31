@@ -58,7 +58,7 @@ func (s *Store) Watch(ctx context.Context, onChange func()) error {
 	if err != nil {
 		return err
 	}
-	defer w.Close()
+	defer func() { _ = w.Close() }()
 
 	watched := map[string]bool{}
 	var targets watchTargets
