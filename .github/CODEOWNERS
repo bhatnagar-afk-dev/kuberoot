@@ -1,0 +1,5 @@
+# Code owners are automatically requested for review and, with the
+# "require review from Code Owners" rule on main, must approve changes.
+# Later rules take precedence; add area owners below as maintainers join.
+
+* @bhatnagar-afk
