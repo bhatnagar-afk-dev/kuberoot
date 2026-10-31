@@ -22,14 +22,14 @@ feel reliable.
 
 ### Goals
 
-1. Discover kubeconfigs automatically: `KUBECONFIG` (from the user's login shell), falling back
-   to `~/.kube/config`.
-2. Let users add extra kubeconfig **files** and **folders** (non-recursive scan). The choice
-   persists across restarts.
+1. Discover kubeconfigs automatically from every common layout on the device (see
+   [Discovery](#discovery)), with no setup required.
+2. Let users add extra kubeconfig **files** and **folders** (scanned with their immediate
+   subfolders). The choice persists across restarts.
 3. Show all contexts, grouped by source file, with cluster server, user, default namespace and
    auth type.
-4. Connect to and disconnect from contexts. **Multiple contexts may be connected at the same
-   time**; the UI shows one at a time in M1.
+4. Connect to and disconnect from contexts. **Up to 5 contexts may be connected at the same
+   time** (a constant, to be raised later); the UI shows one at a time in M1.
 5. Show live connection health (connecting, connected, or an error with a readable reason),
    with retry.
 6. Make exec credential plugins work when the app is launched from Finder, Dock, Start menu or
@@ -80,6 +80,26 @@ feel reliable.
   can come later.
 
 ## Design details
+
+### Discovery
+
+Default sources, in priority order. A file found by more than one source is listed once, under
+the first source that finds it.
+
+| Source | Platforms | Notes |
+|---|---|---|
+| Each file in `$KUBECONFIG` (from the login shell) | all | Cross-file references are resolved as kubectl does |
+| `~/.kube/config` | all | Only when `$KUBECONFIG` is unset. Written by kind, minikube, Docker Desktop, Rancher Desktop, `aws`/`gcloud`/`az` credential commands, and others |
+| `~/.kube/` folder scan | all | Top-level files **and immediate subfolders** (e.g. `~/.kube/configs/`, `~/.kube/config.d/`, `~/.kube/clusters/`). Skips `cache/`, `http-cache/` and hidden entries |
+| `~/.orbstack/k8s/config.yml` | macOS | OrbStack |
+| `/etc/rancher/k3s/k3s.yaml` | Linux | k3s (often root-only; a permission error tells the user how to fix it) |
+| `/etc/rancher/rke2/rke2.yaml` | Linux | RKE2 |
+| `/var/snap/microk8s/current/credentials/client.config` | Linux | MicroK8s |
+
+Folder scans consider any non-hidden regular file up to 1 MiB, and at most 200 files per
+folder. Files that don't parse as kubeconfigs, or have no contexts, are skipped silently. Default
+sources that don't exist on the device aren't shown in the UI. Users can hide any default source
+and add their own files or folders (scanned the same way).
 
 ### Context identity
 
@@ -144,7 +164,8 @@ type Status struct {
 ```
 
 `Reason` values: `Unreachable`, `Timeout`, `TLSError`, `Unauthorized`, `Forbidden`,
-`ExecPluginNotFound`, `ExecPluginFailed`, `InvalidConfig`, `ConfigChanged`, `Unknown`.
+`ExecPluginNotFound`, `ExecPluginFailed`, `InvalidConfig`, `ConfigChanged`, `ConnectionLimit`,
+`Unknown`.
 
 Events (registered with `application.RegisterEvent` so typed TS bindings are generated):
 
@@ -269,8 +290,9 @@ Community testers can add others.
 
 ## Resolved questions
 
-1. **Scan `~/.kube` by default?** Yes. `~/.kube` is a default folder source scanning
-   `*.yaml`, `*.yml` and `*config*` files. Files that aren't kubeconfigs, or have no contexts,
-   are skipped silently. It can be hidden in settings.
-2. **Cap simultaneous connections?** No cap in M1. Each health check is one small request
-   every 30s. Revisit if it proves a problem.
+1. **Which kubeconfig locations are scanned by default?** Every common layout found on the
+   device (see [Discovery](#discovery)), including subfolders of `~/.kube` and
+   distribution-specific paths. Files that aren't kubeconfigs are skipped silently.
+2. **Cap simultaneous connections?** Yes: **5** in M1 (`cluster.MaxConnections`). Connecting a
+   6th context fails with `ConnectionLimit` and asks the user to disconnect one. To be raised
+   once multi-cluster views land.
