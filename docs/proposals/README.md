@@ -8,3 +8,9 @@ KEPs but lighter-weight.
 3. A maintainer merges it as `Implementable` once there is agreement (minimum 5 days open,
    unless trivial). Implementation PRs reference the proposal.
 4. Update the status to `Implemented` when the feature ships.
+
+## Index
+
+| # | Title | Status |
+|---|-------|--------|
+| [0001](0001-cluster-management.md) | Cluster management | Provisional |
