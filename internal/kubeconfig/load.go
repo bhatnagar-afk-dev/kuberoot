@@ -115,6 +115,12 @@ type snapshot struct {
 func load(specs []SourceSpec) snapshot {
 	snap := snapshot{entries: map[string]*entry{}}
 	seenFiles := map[string]bool{}
+	// A hidden file stays hidden even if a folder scan would find it.
+	for _, s := range specs {
+		if s.Hidden && s.Kind == KindFile {
+			seenFiles[s.Path] = true
+		}
+	}
 
 	// Files listed in $KUBECONFIG may reference clusters/users defined in other
 	// files of the list, as kubectl allows. Merge them once for lookups.

@@ -171,6 +171,15 @@ func TestLoadHiddenSource(t *testing.T) {
 	if len(st.Contexts()) != 0 {
 		t.Error("hidden source contributed contexts")
 	}
+
+	// A folder scan must not resurface a hidden file.
+	st.SetSources([]SourceSpec{
+		{Path: p, Kind: KindFile, Origin: OriginDefault, Hidden: true},
+		{Path: dir, Kind: KindFolder, Origin: OriginDefault},
+	})
+	if len(st.Contexts()) != 0 {
+		t.Error("folder scan resurfaced a hidden file")
+	}
 }
 
 func TestLoadEnvCrossFileReferences(t *testing.T) {

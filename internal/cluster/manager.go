@@ -113,6 +113,23 @@ func (m *Manager) Status(id string) Status {
 	return Status{ContextID: id, Phase: PhaseDisconnected}
 }
 
+// Statuses returns the status of every context that is not plainly
+// disconnected, i.e. connecting, connected, or failed.
+func (m *Manager) Statuses() []Status {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]Status, 0, len(m.conns)+len(m.last))
+	for _, c := range m.conns {
+		out = append(out, c.status)
+	}
+	for _, s := range m.last {
+		if s.Phase != PhaseDisconnected || s.Reason != "" {
+			out = append(out, s)
+		}
+	}
+	return out
+}
+
 // Client returns the client for a connected context, for use by later features.
 func (m *Manager) Client(id string) (kubernetes.Interface, *rest.Config, bool) {
 	m.mu.Lock()
