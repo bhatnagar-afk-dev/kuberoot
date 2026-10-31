@@ -1,6 +1,6 @@
 # 0001. Cluster management
 
-- **Status:** Provisional
+- **Status:** Implementable
 - **Authors:** @bhatnagar-afk
 - **Created:** 2026-10-31
 - **Milestone:** M1
@@ -267,9 +267,10 @@ Community testers can add others.
 - **Auto-connect on launch:** convenient, but can trigger SSO prompts or cloud API calls
   unexpectedly. Deferred to a setting.
 
-## Open questions
+## Resolved questions
 
-1. Should the folder scan default to also including `~/.kube/*.yaml|*.yml|*config*`? This is a
-   common layout and could be on by default.
-2. Is up to N simultaneous connections acceptable with no cap in M1, or should we cap it (e.g.
-   10) to bound background health checks?
+1. **Scan `~/.kube` by default?** Yes. `~/.kube` is a default folder source scanning
+   `*.yaml`, `*.yml` and `*config*` files. Files that aren't kubeconfigs, or have no contexts,
+   are skipped silently. It can be hidden in settings.
+2. **Cap simultaneous connections?** No cap in M1. Each health check is one small request
+   every 30s. Revisit if it proves a problem.
