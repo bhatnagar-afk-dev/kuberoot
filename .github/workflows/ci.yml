@@ -53,6 +53,22 @@ jobs:
             exit 1
           }
 
+  integration:
+    name: Integration (kind)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - uses: helm/kind-action@v1
+        with:
+          cluster_name: kuberoot
+      - name: Integration tests
+        run: go test -race -tags integration -run Integration -v ./internal/...
+        env:
+          KUBEROOT_IT_CONTEXT: kind-kuberoot
+
   build:
     name: Build (${{ matrix.os }})
     needs: lint-test
