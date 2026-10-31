@@ -9,7 +9,7 @@
 
 KubeRoot discovers the user's kubeconfig files, lists every context they contain, and lets the
 user connect to one or more clusters. It reports connection health clearly, including auth
-failures from exec credential plugins (aws, gcloud, azure, and similar). This is the base that
+failures from exec credential plugins, for any provider. This is the base that
 resource browsing (M2), logs (M3) and actions (M4) build on.
 
 ## Motivation
@@ -34,8 +34,10 @@ feel reliable.
    with retry.
 6. Make exec credential plugins work when the app is launched from Finder, Dock, Start menu or
    a desktop launcher.
-7. Pick up kubeconfig changes on disk (e.g. after `aws eks update-kubeconfig`) without a
-   restart.
+7. Pick up kubeconfig changes on disk (e.g. after `aws eks update-kubeconfig`,
+   `gcloud container clusters get-credentials` or `az aks get-credentials`) without a restart.
+8. **Be provider-agnostic.** Any kubeconfig that works with `kubectl` should work in KubeRoot,
+   with no code specific to a cloud or distribution. See [Provider support](#provider-support).
 
 ### Non-goals
 
@@ -123,7 +125,7 @@ type Context struct {
     Server     string   `json:"server"`
     Source     string   `json:"source"`      // absolute path of the defining file
     AuthType   AuthType `json:"authType"`    // token | cert | basic | exec | authProvider | none
-    ExecCmd    string   `json:"execCmd"`     // e.g. "aws", only for exec auth
+    ExecCmd    string   `json:"execCmd"`     // plugin command, e.g. "gke-gcloud-auth-plugin"; exec auth only
     IsCurrent  bool     `json:"isCurrent"`   // current-context of its file
 }
 
@@ -155,10 +157,12 @@ Events (registered with `application.RegisterEvent` so typed TS bindings are gen
 
 **`internal/shellenv`**: resolves the user's login-shell environment. On macOS and Linux, GUI
 apps don't inherit the terminal's `PATH` or `KUBECONFIG`. At startup we run
-`$SHELL -l -i -c 'env -0'` once, with a 5s timeout and stdin closed, and merge `PATH`,
-`KUBECONFIG` and cloud-CLI variables (`AWS_*`, `CLOUDSDK_*`, `AZURE_*`, `HTTP(S)_PROXY`,
-`NO_PROXY`) into the process environment. On failure we keep the inherited environment and log
-a warning. This is a no-op on Windows, and skipped if the app was launched from a terminal
+`$SHELL -l -i -c 'env -0'` once, with a 5s timeout and stdin closed, and adopt the **entire
+resolved environment**, the same one `kubectl` would see in a terminal. A small denylist of
+session-specific variables is not copied (`PWD`, `OLDPWD`, `SHLVL`, `_`, `TERM*`). We don't
+allowlist provider variables, because any plugin may depend on its own (`AWS_PROFILE`,
+`CLOUDSDK_CONFIG`, `AZURE_CONFIG_DIR`, `OCI_CLI_PROFILE`, `TELEPORT_*`, proxies, and so on). On
+failure we keep the inherited environment and log a warning. This is a no-op on Windows, and skipped if the app was launched from a terminal
 (detected via `TERM`/`TERM_PROGRAM`).
 
 **`internal/kubeconfig`**: source management and parsing.
@@ -198,6 +202,25 @@ a warning. This is a no-op on Windows, and skipped if the app was launched from 
 Holds extra sources, hidden default sources, and the active context ID. Writes are atomic
 (temp file + rename) with 0600 permissions.
 
+### Provider support
+
+KubeRoot contains no cloud-specific code. Authentication goes through client-go, exactly as
+with `kubectl`:
+
+| Kubeconfig auth | Examples | How KubeRoot handles it |
+|---|---|---|
+| `exec` credential plugin | `aws eks get-token`, `gke-gcloud-auth-plugin`, `kubelogin` (Azure AKS / Entra ID), `oci ce cluster generate-token`, `doctl`, `kubelogin oidc-login`, Teleport `tsh`, Rancher, OpenShift | client-go runs the plugin with the user's resolved shell environment |
+| Client certificate | kind, k3s, minikube, kubeadm, Docker Desktop, Rancher Desktop | Read from the kubeconfig (inline or file paths) |
+| Bearer token / token file | Service-account tokens, many on-prem setups | Read from the kubeconfig |
+| Basic auth | Legacy clusters | Supported by client-go; shown as `basic` |
+| Legacy `auth-provider` (`gcp`, `azure`) | Pre-2023 kubeconfigs | Removed from client-go in 1.26, so `kubectl` can't use them either. KubeRoot reports `InvalidConfig` with a migration hint (e.g. install `gke-gcloud-auth-plugin` or run `kubelogin convert-kubeconfig`). `oidc` auth-provider still works. |
+
+Proxies (`proxy-url` in the kubeconfig, or `HTTPS_PROXY`/`NO_PROXY`) and custom CA bundles are
+honoured by client-go.
+
+The manual test matrix covers at least one exec-plugin cluster from each of AWS, GCP and Azure.
+Community testers can add others.
+
 ### Security
 
 - Credentials never leave Go: the UI only receives the `Context` and `Status` types above.
@@ -229,7 +252,7 @@ Holds extra sources, hidden default sources, and the active context ID. Writes a
 - **Integration (CI, Linux)**: a new `integration` job creates a `kind` cluster, connects via
   `cluster.Manager`, and asserts `connected` plus the server version. It runs on PRs that touch
   `internal/`.
-- **Manual**: kind locally, plus one EKS or GKE context via exec plugin, with the app launched
+- **Manual**: kind locally, plus exec-plugin contexts for EKS, GKE and AKS, with the app launched
   from Finder (not a terminal) to verify `shellenv`.
 
 ## Alternatives
@@ -239,8 +262,8 @@ Holds extra sources, hidden default sources, and the active context ID. Writes a
 - **Use `/readyz` for health:** it reflects API-server readiness better, but is often
   forbidden for restricted users. `/version` is readable by `system:public-info-viewer`, and
   SelfSubjectReview validates credentials.
-- **Bundle cloud CLIs or reimplement token fetching:** heavy, and it means maintaining every
-  cloud's auth. Resolving the shell `PATH` is how other Kubernetes GUIs solve this.
+- **Bundle cloud CLIs or reimplement token fetching:** heavy, it ties KubeRoot to specific
+  providers, and it means maintaining every cloud's auth. Resolving the shell `PATH` is how other Kubernetes GUIs solve this.
 - **Auto-connect on launch:** convenient, but can trigger SSO prompts or cloud API calls
   unexpectedly. Deferred to a setting.
 
