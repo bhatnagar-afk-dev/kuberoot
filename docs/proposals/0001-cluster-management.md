@@ -120,18 +120,19 @@ references are resolved by merging only that list's files, matching kubectl's be
 New service `app.ClusterService`:
 
 ```go
-type ClusterService struct{ /* internal/cluster.Manager, internal/kubeconfig.Store, settings */ }
-
-func (s *ClusterService) ListContexts() []kubeconfig.Context
-func (s *ClusterService) ListSources() []kubeconfig.Source
+func (s *ClusterService) Snapshot() Snapshot                                 // sources, contexts, statuses, active ID, limit
 func (s *ClusterService) AddSource(path string) (kubeconfig.Source, error)   // file or folder
-func (s *ClusterService) PickSource() (*kubeconfig.Source, error)            // native dialog; nil if cancelled
-func (s *ClusterService) RemoveSource(path string) error
-func (s *ClusterService) Connect(id string) (cluster.Status, error)
-func (s *ClusterService) Disconnect(id string) error
-func (s *ClusterService) Status(id string) cluster.Status
+func (s *ClusterService) PickSource(folder bool) (*kubeconfig.Source, error) // native dialog; nil if cancelled
+func (s *ClusterService) RemoveSource(path string) error                     // removes a user source, hides a default one
+func (s *ClusterService) ShowSource(path string) error                       // un-hides a default source
+func (s *ClusterService) Connect(id string) cluster.Status                   // failures are reported in the Status
+func (s *ClusterService) Disconnect(id string)
 func (s *ClusterService) SetActive(id string) error                          // persisted selection
 ```
+
+A single `Snapshot` (and a matching event) is used instead of separate list calls, so the UI
+never mixes contexts and sources from different reloads. File and folder pickers are separate
+because Windows dialogs can't select both.
 
 Types sent to the UI, which contain **no credentials**:
 
@@ -171,7 +172,7 @@ Events (registered with `application.RegisterEvent` so typed TS bindings are gen
 
 | Event | Payload | When |
 |---|---|---|
-| `clusters:contexts` | `[]Context` | Sources added or removed, or files changed on disk |
+| `clusters:changed` | `Snapshot` | Sources added, removed or hidden, or files changed on disk |
 | `clusters:status` | `Status` | Any connection phase change or health-check result |
 
 ### Core packages
@@ -215,7 +216,9 @@ failure we keep the inherited environment and log a warning. This is a no-op on 
   a missing exec-plugin executable → ExecPluginNotFound (detected from client-go's exec error,
   which doesn't reliably wrap `exec.ErrNotFound`, so we also pre-check with `exec.LookPath`
   on connect; the message includes the command and the resolved PATH), and other exec
-  failures → ExecPluginFailed (with stderr).
+  failures → ExecPluginFailed. client-go streams plugin stderr to the process's stderr rather
+  than returning it, so on failure the plugin is re-run once to capture stderr (stdout, which
+  carries the token, is discarded; stderr is truncated and redacted).
 - `Disconnect` cancels the connection's context; later milestones' informers hang off it.
 
 **`internal/settings`**: persists to `os.UserConfigDir()/KubeRoot/settings.json`
