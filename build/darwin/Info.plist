@@ -8,7 +8,7 @@
 		<string>KubeRoot</string>
 		<key>CFBundleIconFile</key>
 		<string>icons</string>
-		<key>CFBundleIconNin.kuberoot.app
+		<key>CFBundleIconName</key>
 		<string>appicon</string>
 		<key>CFBundleIdentifier</key>
 		<string>in.kuberoot.app</string>

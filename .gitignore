@@ -12,3 +12,8 @@ build/windows/nsis/MicrosoftEdgeWebview2Setup.exe
 
 # Test output
 coverage.out
+
+# Mobile targets are not supported; `wails3 task common:update:build-assets`
+# regenerates them, so keep them out of the repo.
+build/ios/
+build/android/
