@@ -10,6 +10,14 @@ linters:
     - revive
     - unconvert
     - unparam
+  exclusions:
+    rules:
+      # KubeRoot's job is to run the user's login shell and kubeconfig exec
+      # plugins, and to read kubeconfig files from user-chosen paths.
+      - linters: [gosec]
+        text: "G204|G304"
+      - path: _test\.go
+        linters: [errcheck, gosec]
 
 formatters:
   enable:

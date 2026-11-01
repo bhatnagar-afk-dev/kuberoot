@@ -5,6 +5,12 @@
   --text: #1b1f27;
   --muted: #5f6877;
   --accent: #326ce5; /* Kubernetes blue */
+  --ok: #1f9d55;
+  --warn: #c27803;
+  --warn-bg: #fff8eb;
+  --dot-off: #b4bac4;
+  --hover: #eef0f3;
+  --selected: #e3ebfc;
   --radius: 8px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
@@ -20,6 +26,12 @@
     --text: #e6e9ef;
     --muted: #8b94a5;
     --accent: #5b8cff;
+    --ok: #3ccf7a;
+    --warn: #f0a429;
+    --warn-bg: #2a2214;
+    --dot-off: #4a505c;
+    --hover: #232731;
+    --selected: #24304a;
   }
 }
 

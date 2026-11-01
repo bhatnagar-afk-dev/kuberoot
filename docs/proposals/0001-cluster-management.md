@@ -1,6 +1,6 @@
 # 0001. Cluster management
 
-- **Status:** Provisional
+- **Status:** Implementable
 - **Authors:** @bhatnagar-afk
 - **Created:** 2026-10-31
 - **Milestone:** M1
@@ -22,14 +22,14 @@ feel reliable.
 
 ### Goals
 
-1. Discover kubeconfigs automatically: `KUBECONFIG` (from the user's login shell), falling back
-   to `~/.kube/config`.
-2. Let users add extra kubeconfig **files** and **folders** (non-recursive scan). The choice
-   persists across restarts.
+1. Discover kubeconfigs automatically from every common layout on the device (see
+   [Discovery](#discovery)), with no setup required.
+2. Let users add extra kubeconfig **files** and **folders** (scanned with their immediate
+   subfolders). The choice persists across restarts.
 3. Show all contexts, grouped by source file, with cluster server, user, default namespace and
    auth type.
-4. Connect to and disconnect from contexts. **Multiple contexts may be connected at the same
-   time**; the UI shows one at a time in M1.
+4. Connect to and disconnect from contexts. **Up to 5 contexts may be connected at the same
+   time** (a constant, to be raised later); the UI shows one at a time in M1.
 5. Show live connection health (connecting, connected, or an error with a readable reason),
    with retry.
 6. Make exec credential plugins work when the app is launched from Finder, Dock, Start menu or
@@ -81,6 +81,26 @@ feel reliable.
 
 ## Design details
 
+### Discovery
+
+Default sources, in priority order. A file found by more than one source is listed once, under
+the first source that finds it.
+
+| Source | Platforms | Notes |
+|---|---|---|
+| Each file in `$KUBECONFIG` (from the login shell) | all | Cross-file references are resolved as kubectl does |
+| `~/.kube/config` | all | Only when `$KUBECONFIG` is unset. Written by kind, minikube, Docker Desktop, Rancher Desktop, `aws`/`gcloud`/`az` credential commands, and others |
+| `~/.kube/` folder scan | all | Top-level files **and immediate subfolders** (e.g. `~/.kube/configs/`, `~/.kube/config.d/`, `~/.kube/clusters/`). Skips `cache/`, `http-cache/` and hidden entries |
+| `~/.orbstack/k8s/config.yml` | macOS | OrbStack |
+| `/etc/rancher/k3s/k3s.yaml` | Linux | k3s (often root-only; a permission error tells the user how to fix it) |
+| `/etc/rancher/rke2/rke2.yaml` | Linux | RKE2 |
+| `/var/snap/microk8s/current/credentials/client.config` | Linux | MicroK8s |
+
+Folder scans consider any non-hidden regular file up to 1 MiB, and at most 200 files per
+folder. Files that don't parse as kubeconfigs, or have no contexts, are skipped silently. Default
+sources that don't exist on the device aren't shown in the UI. Users can hide any default source
+and add their own files or folders (scanned the same way).
+
 ### Context identity
 
 Context names aren't unique across files: `kind-kind` and `default` appear everywhere.
@@ -100,18 +120,19 @@ references are resolved by merging only that list's files, matching kubectl's be
 New service `app.ClusterService`:
 
 ```go
-type ClusterService struct{ /* internal/cluster.Manager, internal/kubeconfig.Store, settings */ }
-
-func (s *ClusterService) ListContexts() []kubeconfig.Context
-func (s *ClusterService) ListSources() []kubeconfig.Source
+func (s *ClusterService) Snapshot() Snapshot                                 // sources, contexts, statuses, active ID, limit
 func (s *ClusterService) AddSource(path string) (kubeconfig.Source, error)   // file or folder
-func (s *ClusterService) PickSource() (*kubeconfig.Source, error)            // native dialog; nil if cancelled
-func (s *ClusterService) RemoveSource(path string) error
-func (s *ClusterService) Connect(id string) (cluster.Status, error)
-func (s *ClusterService) Disconnect(id string) error
-func (s *ClusterService) Status(id string) cluster.Status
+func (s *ClusterService) PickSource(folder bool) (*kubeconfig.Source, error) // native dialog; nil if cancelled
+func (s *ClusterService) RemoveSource(path string) error                     // removes a user source, hides a default one
+func (s *ClusterService) ShowSource(path string) error                       // un-hides a default source
+func (s *ClusterService) Connect(id string) cluster.Status                   // failures are reported in the Status
+func (s *ClusterService) Disconnect(id string)
 func (s *ClusterService) SetActive(id string) error                          // persisted selection
 ```
+
+A single `Snapshot` (and a matching event) is used instead of separate list calls, so the UI
+never mixes contexts and sources from different reloads. File and folder pickers are separate
+because Windows dialogs can't select both.
 
 Types sent to the UI, which contain **no credentials**:
 
@@ -144,13 +165,14 @@ type Status struct {
 ```
 
 `Reason` values: `Unreachable`, `Timeout`, `TLSError`, `Unauthorized`, `Forbidden`,
-`ExecPluginNotFound`, `ExecPluginFailed`, `InvalidConfig`, `ConfigChanged`, `Unknown`.
+`ExecPluginNotFound`, `ExecPluginFailed`, `InvalidConfig`, `ConfigChanged`, `ConnectionLimit`,
+`Unknown`.
 
 Events (registered with `application.RegisterEvent` so typed TS bindings are generated):
 
 | Event | Payload | When |
 |---|---|---|
-| `clusters:contexts` | `[]Context` | Sources added or removed, or files changed on disk |
+| `clusters:changed` | `Snapshot` | Sources added, removed or hidden, or files changed on disk |
 | `clusters:status` | `Status` | Any connection phase change or health-check result |
 
 ### Core packages
@@ -194,7 +216,9 @@ failure we keep the inherited environment and log a warning. This is a no-op on 
   a missing exec-plugin executable → ExecPluginNotFound (detected from client-go's exec error,
   which doesn't reliably wrap `exec.ErrNotFound`, so we also pre-check with `exec.LookPath`
   on connect; the message includes the command and the resolved PATH), and other exec
-  failures → ExecPluginFailed (with stderr).
+  failures → ExecPluginFailed. client-go streams plugin stderr to the process's stderr rather
+  than returning it, so on failure the plugin is re-run once to capture stderr (stdout, which
+  carries the token, is discarded; stderr is truncated and redacted).
 - `Disconnect` cancels the connection's context; later milestones' informers hang off it.
 
 **`internal/settings`**: persists to `os.UserConfigDir()/KubeRoot/settings.json`
@@ -267,9 +291,11 @@ Community testers can add others.
 - **Auto-connect on launch:** convenient, but can trigger SSO prompts or cloud API calls
   unexpectedly. Deferred to a setting.
 
-## Open questions
+## Resolved questions
 
-1. Should the folder scan default to also including `~/.kube/*.yaml|*.yml|*config*`? This is a
-   common layout and could be on by default.
-2. Is up to N simultaneous connections acceptable with no cap in M1, or should we cap it (e.g.
-   10) to bound background health checks?
+1. **Which kubeconfig locations are scanned by default?** Every common layout found on the
+   device (see [Discovery](#discovery)), including subfolders of `~/.kube` and
+   distribution-specific paths. Files that aren't kubeconfigs are skipped silently.
+2. **Cap simultaneous connections?** Yes: **5** in M1 (`cluster.MaxConnections`). Connecting a
+   6th context fails with `ConnectionLimit` and asks the user to disconnect one. To be raised
+   once multi-cluster views land.
