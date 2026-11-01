@@ -25,7 +25,7 @@
         </Capabilities>
         <Applications>
             <Application
-                Id="dev.bhatnagar-afk.kuberoot"
+                Id="in.kuberoot.app"
                 Description="Open-source cross-platform Kubernetes desktop client"
                 DisplayName="KubeRoot"
                 ExecutableName="kuberoot"

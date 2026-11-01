@@ -18,5 +18,5 @@ import * as version$0 from "../internal/version/models.js";
  * Version returns build metadata for the running binary.
  */
 export function Version(): $CancellablePromise<version$0.Info> {
-    return $Call.ByID(2109890539);
+    return $Call.ByID(793873563);
 }

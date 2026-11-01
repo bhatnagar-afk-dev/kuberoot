@@ -5,7 +5,7 @@ import "runtime"
 
 // These are overridden at build time, e.g.
 //
-//	-ldflags "-X github.com/bhatnagar-afk-dev/kuberoot/internal/version.Version=v0.1.0"
+//	-ldflags "-X kuberoot.in/kuberoot/internal/version.Version=v0.1.0"
 var (
 	Version = "dev"
 	Commit  = "none"

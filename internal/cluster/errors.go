@@ -12,8 +12,8 @@ import (
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 
-	"github.com/bhatnagar-afk-dev/kuberoot/internal/kubeconfig"
-	"github.com/bhatnagar-afk-dev/kuberoot/internal/redact"
+	"kuberoot.in/kuberoot/internal/kubeconfig"
+	"kuberoot.in/kuberoot/internal/redact"
 )
 
 // ErrConnectionLimit is returned when MaxConnections contexts are already connected.

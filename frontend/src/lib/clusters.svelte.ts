@@ -1,11 +1,11 @@
 // Reactive client-side state for kubeconfig sources, contexts and connections.
 // All data comes from ClusterService; this module only mirrors it.
 import { Events } from '@wailsio/runtime';
-import { ClusterService } from '../../bindings/github.com/bhatnagar-afk-dev/kuberoot/app';
-import type { Snapshot } from '../../bindings/github.com/bhatnagar-afk-dev/kuberoot/app';
-import { Phase } from '../../bindings/github.com/bhatnagar-afk-dev/kuberoot/internal/cluster';
-import type { Status } from '../../bindings/github.com/bhatnagar-afk-dev/kuberoot/internal/cluster';
-import type { Context, Source } from '../../bindings/github.com/bhatnagar-afk-dev/kuberoot/internal/kubeconfig';
+import { ClusterService } from '../../bindings/kuberoot.in/kuberoot/app';
+import type { Snapshot } from '../../bindings/kuberoot.in/kuberoot/app';
+import { Phase } from '../../bindings/kuberoot.in/kuberoot/internal/cluster';
+import type { Status } from '../../bindings/kuberoot.in/kuberoot/internal/cluster';
+import type { Context, Source } from '../../bindings/kuberoot.in/kuberoot/internal/kubeconfig';
 
 export type { Context, Source, Status };
 export { Phase };

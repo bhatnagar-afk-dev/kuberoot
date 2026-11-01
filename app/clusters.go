@@ -14,10 +14,10 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"github.com/bhatnagar-afk-dev/kuberoot/internal/cluster"
-	"github.com/bhatnagar-afk-dev/kuberoot/internal/kubeconfig"
-	"github.com/bhatnagar-afk-dev/kuberoot/internal/settings"
-	"github.com/bhatnagar-afk-dev/kuberoot/internal/version"
+	"kuberoot.in/kuberoot/internal/cluster"
+	"kuberoot.in/kuberoot/internal/kubeconfig"
+	"kuberoot.in/kuberoot/internal/settings"
+	"kuberoot.in/kuberoot/internal/version"
 )
 
 // Events emitted to the UI.

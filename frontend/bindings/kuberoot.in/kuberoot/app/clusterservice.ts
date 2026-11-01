@@ -25,7 +25,7 @@ import * as $models from "./models.js";
  * AddSource adds a kubeconfig file or folder.
  */
 export function AddSource(path: string): $CancellablePromise<kubeconfig$0.Source> {
-    return $Call.ByID(3456671018, path);
+    return $Call.ByID(3792494650, path);
 }
 
 /**
@@ -33,14 +33,14 @@ export function AddSource(path: string): $CancellablePromise<kubeconfig$0.Source
  * Status rather than as an error, so the UI handles one shape.
  */
 export function Connect(id: string): $CancellablePromise<cluster$0.Status> {
-    return $Call.ByID(3782970282, id);
+    return $Call.ByID(3176185594, id);
 }
 
 /**
  * Disconnect closes the connection to a context.
  */
 export function Disconnect(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3303966606, id);
+    return $Call.ByID(3333947294, id);
 }
 
 /**
@@ -48,33 +48,33 @@ export function Disconnect(id: string): $CancellablePromise<void> {
  * and adds it. It returns nil if the dialog was cancelled.
  */
 export function PickSource(folder: boolean): $CancellablePromise<kubeconfig$0.Source | null> {
-    return $Call.ByID(3060986704, folder);
+    return $Call.ByID(2394440736, folder);
 }
 
 /**
  * RemoveSource removes a user-added source, or hides a default one.
  */
 export function RemoveSource(path: string): $CancellablePromise<void> {
-    return $Call.ByID(3308745473, path);
+    return $Call.ByID(2635256113, path);
 }
 
 /**
  * SetActive remembers the selected context across restarts.
  */
 export function SetActive(id: string): $CancellablePromise<void> {
-    return $Call.ByID(3813720142, id);
+    return $Call.ByID(2991084286, id);
 }
 
 /**
  * ShowSource un-hides a default source.
  */
 export function ShowSource(path: string): $CancellablePromise<void> {
-    return $Call.ByID(3998454448, path);
+    return $Call.ByID(3877980320, path);
 }
 
 /**
  * Snapshot returns the current sources, contexts and connection statuses.
  */
 export function Snapshot(): $CancellablePromise<$models.Snapshot> {
-    return $Call.ByID(3718941920);
+    return $Call.ByID(2590911344);
 }

@@ -12,9 +12,9 @@ import (
 
 	"github.com/wailsapp/wails/v3/pkg/application"
 
-	"github.com/bhatnagar-afk-dev/kuberoot/app"
-	"github.com/bhatnagar-afk-dev/kuberoot/internal/settings"
-	"github.com/bhatnagar-afk-dev/kuberoot/internal/shellenv"
+	"kuberoot.in/kuberoot/app"
+	"kuberoot.in/kuberoot/internal/settings"
+	"kuberoot.in/kuberoot/internal/shellenv"
 )
 
 //go:embed all:frontend/dist

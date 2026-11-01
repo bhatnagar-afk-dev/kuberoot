@@ -8,7 +8,7 @@
   IgnorableNamespaces="uap3">
   
   <Identity 
-    Name="dev.bhatnagar-afk.kuberoot"
+    Name="in.kuberoot.app"
     Publisher="CN=KubeRoot Authors"
     Version="0.1.0.0" 
     ProcessorArchitecture="arm64" />
@@ -29,7 +29,7 @@
   </Resources>
   
   <Applications>
-    <Application Id="dev.bhatnagar-afk.kuberoot" Executable="kuberoot" EntryPoint="Windows.FullTrustApplication">
+    <Application Id="in.kuberoot.app" Executable="kuberoot" EntryPoint="Windows.FullTrustApplication">
       <uap:VisualElements
         DisplayName="KubeRoot"
         Description="Open-source cross-platform Kubernetes desktop client"
