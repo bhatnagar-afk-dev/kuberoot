@@ -18,7 +18,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bhatnagar-afk-dev/kuberoot/internal/kubeconfig"
+	"kuberoot.in/kuberoot/internal/kubeconfig"
 )
 
 var fakePlugin string // path to the compiled fake exec plugin

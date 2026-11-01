@@ -16,7 +16,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"github.com/bhatnagar-afk-dev/kuberoot/internal/kubeconfig"
+	"kuberoot.in/kuberoot/internal/kubeconfig"
 )
 
 // ConfigSource supplies contexts and client configs. *kubeconfig.Store implements it.

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bhatnagar-afk-dev/kuberoot/internal/kubeconfig"
+	"kuberoot.in/kuberoot/internal/kubeconfig"
 )
 
 // TestIntegrationConnect connects to a real cluster using the same discovery

@@ -11,7 +11,7 @@ import (
 
 	api "k8s.io/client-go/tools/clientcmd/api"
 
-	"github.com/bhatnagar-afk-dev/kuberoot/internal/redact"
+	"kuberoot.in/kuberoot/internal/redact"
 )
 
 const (

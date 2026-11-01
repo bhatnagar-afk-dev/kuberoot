@@ -5,7 +5,7 @@
 // are generated from these types (see `wails3 generate bindings`).
 package app
 
-import "github.com/bhatnagar-afk-dev/kuberoot/internal/version"
+import "kuberoot.in/kuberoot/internal/version"
 
 // SystemService exposes application-level information to the UI.
 type SystemService struct{}

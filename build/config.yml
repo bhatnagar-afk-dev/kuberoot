@@ -7,7 +7,7 @@ version: '3'
 info:
   companyName: "KubeRoot Authors" # The name of the company
   productName: "KubeRoot" # The name of the application
-  productIdentifier: "dev.bhatnagar-afk.kuberoot" # The unique product identifier
+  productIdentifier: "in.kuberoot.app" # The unique product identifier
   description: "Open-source cross-platform Kubernetes desktop client" # The application description
   copyright: "© 2026 The KubeRoot Authors" # Copyright text
   comments: "KubeRoot" # Comments

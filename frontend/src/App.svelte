@@ -1,7 +1,7 @@
 <script lang="ts">
   import { onMount } from 'svelte';
-  import { SystemService } from '../bindings/github.com/bhatnagar-afk-dev/kuberoot/app';
-  import type { Info } from '../bindings/github.com/bhatnagar-afk-dev/kuberoot/internal/version';
+  import { SystemService } from '../bindings/kuberoot.in/kuberoot/app';
+  import type { Info } from '../bindings/kuberoot.in/kuberoot/internal/version';
   import { clusters } from './lib/clusters.svelte';
   import Sidebar from './lib/Sidebar.svelte';
   import ContextDetail from './lib/ContextDetail.svelte';

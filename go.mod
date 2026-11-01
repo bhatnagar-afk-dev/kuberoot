@@ -1,4 +1,4 @@
-module github.com/bhatnagar-afk-dev/kuberoot
+module kuberoot.in/kuberoot
 
 go 1.26.0
 

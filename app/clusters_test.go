@@ -8,9 +8,9 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/bhatnagar-afk-dev/kuberoot/internal/cluster"
-	"github.com/bhatnagar-afk-dev/kuberoot/internal/kubeconfig"
-	"github.com/bhatnagar-afk-dev/kuberoot/internal/settings"
+	"kuberoot.in/kuberoot/internal/cluster"
+	"kuberoot.in/kuberoot/internal/kubeconfig"
+	"kuberoot.in/kuberoot/internal/settings"
 )
 
 const oneContext = `apiVersion: v1
