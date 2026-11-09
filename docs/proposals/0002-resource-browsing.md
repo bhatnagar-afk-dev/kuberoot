@@ -134,7 +134,10 @@ type Session struct {
 // Catalog lists the resource types a cluster serves.
 type Catalog interface {
     ResourceTypes(ctx context.Context) ([]ResourceType, error)
-    Invalidate() // e.g. after a CRD is added
+    // Changed reports whether the server's resource types differ from the
+    // cached set (e.g. a CRD was added). It never updates the cache.
+    Changed(ctx context.Context) (bool, error)
+    Refresh(ctx context.Context) ([]ResourceType, error)
 }
 
 // Navigator arranges resource types into the navigation tree.
@@ -174,6 +177,14 @@ connection's own `ctx`, so everything started for a cluster stops when it discon
   memory-cached per connection. It drops subresources and types without `list` and `watch`
   verbs. A partial discovery failure (an aggregated API that is down) keeps the groups that
   worked and reports the failed group in the UI.
+- **Refresh, not live updates.** The navigation is not updated on its own in M2. Instead,
+  `Changed` compares a hash of the current discovery document with the cached one. It runs on
+  reconnect, when the user switches to the cluster, every 5 minutes while connected, and when
+  opening a view returns `404` (type removed). If the types changed, the UI shows a
+  **Refresh** button on the navigation ("Resource types changed"). Clicking it calls
+  `Refresh`. Discovery is readable by every authenticated user, so this needs no extra
+  permissions (a CRD watch would), and costs one or two small requests. Live updates may come
+  after v0.1.
 - **`curated.Navigator`** is a pure function over `[]ResourceType`. Section membership is a
   data table keyed by `group/resource`:
 
@@ -302,6 +313,7 @@ Events (registered with `application.RegisterEvent`):
 | Event | Payload | When |
 |---|---|---|
 | `resources:rows` | `RowBatch{viewId, reset, upserts []Row, deletes []string}` | Batched changes, ≤10/s per view |
+| `resources:navstale` | `{contextId}` | `Catalog.Changed` found new or removed resource types |
 | `resources:viewstatus` | `ViewStatus{viewId, phase, forbidden []string, reason, message}` | loading → ready, forbidden namespaces, disconnected, error |
 
 `phase` is `loading | ready | stale | error`. `stale` means the connection is down and the
@@ -317,6 +329,10 @@ Under `frontend/src/lib/resources/`:
 - `NamespacePicker.svelte` is a multi-select with search, plus "All namespaces".
 - `DetailPanel.svelte` has the Describe, YAML and Events tabs. Describe and YAML are rendered
   by small components behind a common props shape, so a structured describe view can drop in.
+- `YamlView.svelte` is read-only text with lightweight YAML syntax highlighting (a small
+  highlighter with only the YAML grammar, e.g. highlight.js core, or a tiny in-house tokenizer;
+  chosen in the PR by bundle size). It takes `{ text }` props, so an editor component can
+  replace it when YAML editing lands without changing `DetailPanel`.
 - `resources.svelte.ts` holds the view store: it applies `RowBatch`es keyed by UID and closes
   views when components unmount.
 
@@ -376,12 +392,19 @@ The "resource browser arrives in M2" placeholder in `ContextDetail.svelte` is re
 - **A table library (e.g. TanStack Table):** feature-rich, but a fixed-row-height virtualizer
   is small, and a library would add bundle size and update overhead on hot paths.
 
-## Open questions
+## Resolved questions
 
-1. **Catalog refresh:** watch `customresourcedefinitions` to update navigation live, or
-   refresh on demand (button and on reconnect)? Proposed: on demand in M2, since a CRD watch
-   needs extra permissions.
-2. **YAML viewer:** plain `<pre>` with lightweight highlighting, or a read-only CodeMirror 6?
-   CodeMirror is heavier but is the likely editor once YAML editing lands.
-3. **Idle timeout and informer limit:** are 60s and 30 per cluster right? Both will be
-   constants and easy to tune.
+1. **Catalog refresh:** on demand. KubeRoot detects that the resource types changed and shows
+   a Refresh button; it does not update the navigation live. Live updates may come after v0.1.
+   See [Catalog and navigation](#catalog-and-navigation).
+2. **YAML viewer:** lightweight highlighted read-only text in M2 (`YamlView.svelte`). The
+   editor for YAML editing will be chosen in that feature's proposal. Candidates:
+   - **CodeMirror 6:** modular (~150–300 KB with `@codemirror/lang-yaml`), good in any
+     webview. Kubernetes schema validation/completion needs extra work
+     (`codemirror-json-schema` is less mature than Monaco's equivalent).
+   - **Monaco** (the VS Code editor, named in ADR 0001): best Kubernetes YAML experience via
+     `monaco-yaml` (JSON-schema validation, completion, hover). Heaviest (several MB, web
+     workers).
+   - **Ace:** mature and mid-weight, but less active and with weaker YAML schema tooling.
+3. **Idle timeout and informer limit:** 60s idle timeout and at most 30 informers per cluster,
+   as constants.
