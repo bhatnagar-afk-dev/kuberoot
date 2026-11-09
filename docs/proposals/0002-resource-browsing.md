@@ -88,7 +88,8 @@ The implementation follows SOLID, in Go terms:
 - **Single responsibility:** discovery, navigation layout, watching, batching, describing and
   YAML rendering are separate types.
 - **Open/closed and dependency inversion:** `internal/resources` defines small interfaces
-  (`Catalog`, `Navigator`, `Describer`, `ObjectReader`, `RowSource`, `Sink`). Concrete
+  (`Catalog`, `Navigator`, `Describer`, `ObjectReader`, `Sink`), and each subpackage defines the
+  small interfaces it consumes (e.g. `cache.Source`, `view.Subscriber`). Concrete
   implementations live in subpackages and are wired together in one place (`app/`).
   Consumers depend only on the interfaces.
 - **Interface segregation:** resources code reaches the M1 connection only through the narrow
@@ -102,11 +103,11 @@ The implementation follows SOLID, in Go terms:
 ```
 internal/resources/
   types.go            ResourceType, NavGroup, ObjectRef, Column, Row, ViewRequest, ...
-  interfaces.go       Catalog, Navigator, Describer, ObjectReader, RowSource, Sink, Connections
-  browser.go          Browser: facade the app service calls; owns views
+  interfaces.go       Catalog, Navigator, Describer, ObjectReader, Sink, Connections
+  browser/            Browser: facade the app service calls; owns views
   catalog/            discovery-based Catalog
   nav/curated/        curated Navigator (section table is data)
-  table/              RowSource over server-side Table (LIST + WATCH adapter)
+  table/              Source over server-side Table (LIST + WATCH adapter)
   cache/              lazy, ref-counted informers per (context, GVR, namespace)
   view/               a view = merged informer subscriptions + batcher
   object/             ObjectReader: GET + YAML rendering + secret masking
@@ -120,15 +121,17 @@ internal/resources/
 type Connections interface {
     // Session returns clients for a connected context and a context that is
     // cancelled when the connection is dropped or replaced.
-    Session(contextID string) (Session, error)
+    Session(contextID string) (cluster.Session, error)
 }
 
+// In internal/cluster, so the cluster package doesn't depend on resources.
 type Session struct {
+    ContextID string
     Ctx       context.Context
     Config    *rest.Config          // copy
     Dynamic   dynamic.Interface
     Discovery discovery.CachedDiscoveryInterface
-    Mapper    meta.RESTMapper
+    Mapper    meta.ResettableRESTMapper
 }
 
 // Catalog lists the resource types a cluster serves.
@@ -155,9 +158,11 @@ type ObjectReader interface {
     YAML(ctx context.Context, s Session, ref ObjectRef, opts YAMLOptions) (string, error)
 }
 
-// RowSource lists and watches one (GVR, namespace) as table rows.
-type RowSource interface {
-    cache.ListerWatcher // rows are *table.RowObject; see "Table adapter"
+// cache.Source lists and watches one (GVR, namespace) as table rows.
+// *table.Source implements it.
+type Source interface {
+    k8scache.ListerWatcherWithContext // rows are *table.RowObject; see "Table adapter"
+    Columns() []resources.Column
 }
 
 // Sink receives batched changes for one view.
@@ -237,8 +242,10 @@ connection's own `ctx`, so everything started for a cluster stops when it discon
   A `403 Forbidden` on one namespace's informer marks that namespace as forbidden in the view's
   status without failing the others.
 - **Batching:** each view buffers upserts and deletes and flushes at most every **100ms**
-  (≤10 batches/s). The first batch after sync, or after a relist, is a `reset` carrying the
-  full row set, sent in chunks of 1,000 rows.
+  (≤10 batches/s). The first batch, sent once every informer of the view has synced or failed,
+  is a `reset` carrying the full row set, in chunks of 1,000 rows. After a relist
+  (`410 Gone`), client-go reports the differences, which arrive as ordinary upserts and
+  deletes. Rows added and removed within one window are not sent at all.
 - **Namespaces** for the picker come from a view on `namespaces`. If that is forbidden, the
   picker offers the context's default namespace and lets the user type names.
 
