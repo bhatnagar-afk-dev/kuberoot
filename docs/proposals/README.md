@@ -14,3 +14,4 @@ KEPs but lighter-weight.
 | # | Title | Status |
 |---|-------|--------|
 | [0001](0001-cluster-management.md) | Cluster management | Implemented |
+| [0002](0002-resource-browsing.md) | Resource browsing | Implementable |
