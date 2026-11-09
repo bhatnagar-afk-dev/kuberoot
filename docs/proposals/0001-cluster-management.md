@@ -1,6 +1,6 @@
 # 0001. Cluster management
 
-- **Status:** Implementable
+- **Status:** Implemented
 - **Authors:** @bhatnagar-afk
 - **Created:** 2026-10-31
 - **Milestone:** M1
@@ -299,3 +299,16 @@ Community testers can add others.
 2. **Cap simultaneous connections?** Yes: **5** in M1 (`cluster.MaxConnections`). Connecting a
    6th context fails with `ConnectionLimit` and asks the user to disconnect one. To be raised
    once multi-cluster views land.
+
+## Follow-ups
+
+Deferred after M1 shipped. None of these block v0.1.
+
+1. **Manual GKE and AKS checks** (test plan): EKS passed on 2026-11-03 (Finder launch,
+   `aws eks get-token`, connect, and the auth error after `aws sso logout`). GKE and AKS will
+   be checked during M2/M3 testing.
+2. **Fresh credentials on reconnect** (post-v0.1 improvement): client-go keeps exec plugin
+   tokens in a process-wide cache, so Disconnect → Connect reuses a still-valid token (up to
+   ~15 min for EKS) instead of re-checking the user's login. Fix: in `cluster.Manager.dial`,
+   add a unique env var (e.g. `KUBEROOT_SESSION=<n>`) to the copied `ExecProvider` so each
+   manual connect gets its own cache entry. Health checks keep reusing the token.
