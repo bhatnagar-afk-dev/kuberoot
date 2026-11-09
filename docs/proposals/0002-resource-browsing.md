@@ -1,6 +1,6 @@
 # 0002. Resource browsing
 
-- **Status:** Provisional
+- **Status:** Implementable
 - **Authors:** @bhatnagar-afk
 - **Created:** 2026-11-09
 - **Milestone:** M2
