@@ -329,10 +329,26 @@ Under `frontend/src/lib/resources/`:
 - `NamespacePicker.svelte` is a multi-select with search, plus "All namespaces".
 - `DetailPanel.svelte` has the Describe, YAML and Events tabs. Describe and YAML are rendered
   by small components behind a common props shape, so a structured describe view can drop in.
-- `YamlView.svelte` is read-only text with lightweight YAML syntax highlighting (a small
-  highlighter with only the YAML grammar, e.g. highlight.js core, or a tiny in-house tokenizer;
-  chosen in the PR by bundle size). It takes `{ text }` props, so an editor component can
-  replace it when YAML editing lands without changing `DetailPanel`.
+- **Code editor, one point of change.** All code/text display goes through
+  `frontend/src/lib/editor/`. The rest of the app imports only `CodeEditor.svelte` from
+  there, never an editor library:
+
+  ```ts
+  // frontend/src/lib/editor/types.ts
+  export interface CodeEditorProps {
+    value: string;
+    language: 'yaml' | 'text';   // grows as needed (json, shell, ...)
+    readOnly: boolean;           // true everywhere in M2
+    onChange?: (value: string) => void;
+  }
+  ```
+
+  `CodeEditor.svelte` re-exports the current implementation, `codemirror/CodeMirrorEditor.svelte`
+  (CodeMirror 6 with `@codemirror/lang-yaml`, loaded lazily so it is not in the startup
+  bundle). Only `lib/editor/codemirror/` imports `@codemirror/*`. Switching to another editor
+  means adding a sibling folder that implements `CodeEditorProps` and changing the one line in
+  `CodeEditor.svelte`. M2 uses it read-only for the YAML tab and for Describe output; YAML
+  editing later turns on `readOnly: false`.
 - `resources.svelte.ts` holds the view store: it applies `RowBatch`es keyed by UID and closes
   views when components unmount.
 
@@ -397,14 +413,13 @@ The "resource browser arrives in M2" placeholder in `ContextDetail.svelte` is re
 1. **Catalog refresh:** on demand. KubeRoot detects that the resource types changed and shows
    a Refresh button; it does not update the navigation live. Live updates may come after v0.1.
    See [Catalog and navigation](#catalog-and-navigation).
-2. **YAML viewer:** lightweight highlighted read-only text in M2 (`YamlView.svelte`). The
-   editor for YAML editing will be chosen in that feature's proposal. Candidates:
-   - **CodeMirror 6:** modular (~150–300 KB with `@codemirror/lang-yaml`), good in any
-     webview. Kubernetes schema validation/completion needs extra work
-     (`codemirror-json-schema` is less mature than Monaco's equivalent).
-   - **Monaco** (the VS Code editor, named in ADR 0001): best Kubernetes YAML experience via
-     `monaco-yaml` (JSON-schema validation, completion, hover). Heaviest (several MB, web
-     workers).
+2. **YAML viewer / editor:** **CodeMirror 6**, used read-only in M2 and in edit mode when YAML
+   editing lands, so we build one viewer instead of a highlighter that is later thrown away.
+   It sits behind the `lib/editor` module (see [Frontend](#frontend)), so it can be replaced by
+   changing one file. Alternatives considered:
+   - **Monaco** (the VS Code editor, named in ADR 0001): best Kubernetes YAML tooling via
+     `monaco-yaml`, but several MB plus web workers.
    - **Ace:** mature and mid-weight, but less active and with weaker YAML schema tooling.
+   - **A plain highlighter** (highlight.js, Prism): lightest, but cannot become an editor.
 3. **Idle timeout and informer limit:** 60s idle timeout and at most 30 informers per cluster,
    as constants.
