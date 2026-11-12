@@ -87,7 +87,8 @@ type conn struct {
 	client      kubernetes.Interface
 	ctx         context.Context
 	cancel      context.CancelFunc
-	status      Status // guarded by Manager.mu
+	status      Status   // guarded by Manager.mu
+	session     *Session // created on first Session call; guarded by Manager.mu
 }
 
 // NewManager returns a Manager reading configs from src.
