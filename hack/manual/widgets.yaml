@@ -1,0 +1,9 @@
+apiVersion: example.com/v1
+kind: Widget
+metadata: {name: red-one, namespace: web}
+spec: {color: red}
+---
+apiVersion: example.com/v1
+kind: Widget
+metadata: {name: blue-one, namespace: api}
+spec: {color: blue}

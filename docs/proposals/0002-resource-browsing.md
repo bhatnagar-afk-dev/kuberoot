@@ -104,7 +104,7 @@ The implementation follows SOLID, in Go terms:
 internal/resources/
   types.go            ResourceType, NavGroup, ObjectRef, Column, Row, ViewRequest, ...
   interfaces.go       Catalog, Navigator, Describer, ObjectReader, Sink, Connections
-  browser/            Browser: facade the app service calls; owns views
+  browser/            Browser (owns views) and Catalogs (navigation per connection)
   catalog/            discovery-based Catalog
   nav/curated/        curated Navigator (section table is data)
   table/              Source over server-side Table (LIST + WATCH adapter)
@@ -185,7 +185,9 @@ connection's own `ctx`, so everything started for a cluster stops when it discon
 - **Refresh, not live updates.** The navigation is not updated on its own in M2. Instead,
   `Changed` compares a hash of the current discovery document with the cached one. It runs on
   reconnect, when the user switches to the cluster, every 5 minutes while connected, and when
-  opening a view returns `404` (type removed). If the types changed, the UI shows a
+  a view reports `404` (type removed; `ViewStatus.reason` is `NotFound`). A change is reported
+  once until the user refreshes, and `Navigation` also returns a `stale` flag so the UI shows
+  it even if it missed the event. If the types changed, the UI shows a
   **Refresh** button on the navigation ("Resource types changed"). Clicking it calls
   `Refresh`. Discovery is readable by every authenticated user, so this needs no extra
   permissions (a CRD watch would), and costs one or two small requests. Live updates may come
@@ -269,11 +271,12 @@ connection's own `ctx`, so everything started for a cluster stops when it discon
 New service `app.ResourceService`, a thin wrapper over `resources.Browser`:
 
 ```go
-func (s *ResourceService) Navigation(contextID string) ([]resources.NavGroup, error)
-func (s *ResourceService) RefreshNavigation(contextID string) ([]resources.NavGroup, error)
+func (s *ResourceService) Navigation(contextID string) (resources.Navigation, error)
+func (s *ResourceService) RefreshNavigation(contextID string) (resources.Navigation, error)
 func (s *ResourceService) Open(req resources.ViewRequest) error // rows and columns arrive as events
-func (s *ResourceService) SetNamespaces(viewID string, namespaces []string) error  // nil/empty = all
 func (s *ResourceService) Close(viewID string)
+func (s *ResourceService) SavedNamespaces(contextID string) []string        // empty = all
+func (s *ResourceService) SaveNamespaces(contextID string, namespaces []string) error
 func (s *ResourceService) OpenEvents(viewID string, ref resources.ObjectRef) error
 func (s *ResourceService) Describe(ref resources.ObjectRef) (string, error)
 func (s *ResourceService) YAML(ref resources.ObjectRef, opts resources.YAMLOptions) (string, error)
@@ -284,6 +287,11 @@ routing events for it before calling `Open`, so no batch can arrive for a view t
 know yet. Columns come with the first (`reset`) batch, because they are only known once the
 first LIST returns.
 
+Changing a view's namespaces closes it and opens a new one. The informers it needs are shared
+and kept for 60s after their last subscriber, so the new view fills from memory, and the UI
+keeps the old rows until the new reset arrives. An in-place `SetNamespaces` was dropped as
+not worth its extra code. The chosen namespaces are saved per context in the settings file.
+
 Types sent to the UI:
 
 ```go
@@ -292,9 +300,21 @@ type ResourceType struct {
     Namespaced bool
 }
 
+type NavItem struct {
+    Title string        `json:"title"`
+    Type  *ResourceType `json:"type,omitempty"`  // nil for a folder (a CRD API group)
+    Items []NavItem     `json:"items,omitempty"` // a folder's entries; one level only
+}
+
 type NavGroup struct {
-    Title string          `json:"title"`
-    Items []NavItem       `json:"items"`  // Title + ResourceType; may nest one level (CRD API groups)
+    Title string    `json:"title"`
+    Items []NavItem `json:"items"`
+}
+
+type Navigation struct {
+    Groups []NavGroup `json:"groups"`
+    Failed []string   `json:"failed,omitempty"` // group versions discovery couldn't read
+    Stale  bool       `json:"stale,omitempty"`  // types changed since the tree was built
 }
 
 type ViewRequest struct {
@@ -333,7 +353,7 @@ Events (registered with `application.RegisterEvent`):
 |---|---|---|
 | `resources:rows` | `RowBatch{viewId, reset, columns, upserts []Row, deletes []string}` (`columns` on reset) | Batched changes, ≤10/s per view |
 | `resources:navstale` | `{contextId}` | `Catalog.Changed` found new or removed resource types |
-| `resources:viewstatus` | `ViewStatus{viewId, phase, forbidden []string, reason, message}` | loading → ready, forbidden namespaces, disconnected, error |
+| `resources:viewstatus` | `ViewStatus{viewId, phase, forbidden []string, reason, message}` (`reason` is `NotFound` when the type is gone) | loading → ready, forbidden namespaces, disconnected, error |
 
 `phase` is `loading | ready | stale | error`. `stale` means the connection is down and the
 rows are the last known ones.
