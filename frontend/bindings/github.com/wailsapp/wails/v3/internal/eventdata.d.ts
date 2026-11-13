@@ -11,12 +11,17 @@ import type * as app$0 from "../../../../../kuberoot.in/kuberoot/app/models.js";
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore: Unused imports
 import type * as cluster$0 from "../../../../../kuberoot.in/kuberoot/internal/cluster/models.js";
+// eslint-disable-next-line @typescript-eslint/ban-ts-comment
+// @ts-ignore: Unused imports
+import type * as resources$0 from "../../../../../kuberoot.in/kuberoot/internal/resources/models.js";
 
 declare module "@wailsio/runtime" {
     namespace Events {
         interface CustomEvents {
             "clusters:changed": app$0.Snapshot;
             "clusters:status": cluster$0.Status;
+            "resources:rows": resources$0.RowBatch;
+            "resources:viewstatus": resources$0.ViewStatus;
         }
     }
 }

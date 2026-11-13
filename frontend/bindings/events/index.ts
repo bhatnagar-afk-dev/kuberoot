@@ -18,3 +18,13 @@ export const ClustersChanged = "clusters:changed";
  */
 export const ClustersStatus = "clusters:status";
 
+/**
+ * Name of the custom event "resources:rows".
+ */
+export const ResourcesRows = "resources:rows";
+
+/**
+ * Name of the custom event "resources:viewstatus".
+ */
+export const ResourcesViewstatus = "resources:viewstatus";
+

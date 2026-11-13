@@ -33,12 +33,14 @@ func main() {
 		log.Fatal(err)
 	}
 
+	clusters := app.NewClusterService(st)
 	a := application.New(application.Options{
 		Name:        "KubeRoot",
 		Description: "Open-source cross-platform Kubernetes desktop client",
 		Services: []application.Service{
 			application.NewService(&app.SystemService{}),
-			application.NewService(app.NewClusterService(st)),
+			application.NewService(clusters),
+			application.NewService(app.NewResourceService(clusters)), // after clusters: needs its manager
 		},
 		Assets: application.AssetOptions{
 			Handler: application.AssetFileServerFS(assets),

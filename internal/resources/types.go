@@ -23,6 +23,15 @@ func (t ResourceType) GVR() schema.GroupVersionResource {
 	return schema.GroupVersionResource{Group: t.Group, Version: t.Version, Resource: t.Resource}
 }
 
+// ViewRequest asks for a live table of one resource type. The UI chooses
+// ViewID, so it can route events for the view before Open returns.
+type ViewRequest struct {
+	ViewID     string       `json:"viewId"`
+	ContextID  string       `json:"contextId"`
+	Type       ResourceType `json:"type"`
+	Namespaces []string     `json:"namespaces"` // empty means all namespaces
+}
+
 // Column describes one table column, as reported by the server (the same
 // columns `kubectl get` prints).
 type Column struct {
