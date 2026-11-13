@@ -24,6 +24,12 @@ type section struct {
 
 // sections is the curated layout. Types not served by a cluster are skipped.
 var sections = []section{
+	{"Cluster", []string{
+		"/nodes", "/namespaces", "/events", "apiregistration.k8s.io/apiservices",
+		"apiextensions.k8s.io/customresourcedefinitions", "coordination.k8s.io/leases",
+		"admissionregistration.k8s.io/mutatingwebhookconfigurations",
+		"admissionregistration.k8s.io/validatingwebhookconfigurations",
+	}},
 	{"Workloads", []string{
 		"/pods", "apps/deployments", "apps/statefulsets", "apps/daemonsets", "apps/replicasets",
 		"batch/jobs", "batch/cronjobs",
@@ -45,12 +51,6 @@ var sections = []section{
 	{"Access", []string{
 		"/serviceaccounts", "rbac.authorization.k8s.io/roles", "rbac.authorization.k8s.io/rolebindings",
 		"rbac.authorization.k8s.io/clusterroles", "rbac.authorization.k8s.io/clusterrolebindings",
-	}},
-	{"Cluster", []string{
-		"/nodes", "/namespaces", "/events", "apiregistration.k8s.io/apiservices",
-		"apiextensions.k8s.io/customresourcedefinitions", "coordination.k8s.io/leases",
-		"admissionregistration.k8s.io/mutatingwebhookconfigurations",
-		"admissionregistration.k8s.io/validatingwebhookconfigurations",
 	}},
 }
 

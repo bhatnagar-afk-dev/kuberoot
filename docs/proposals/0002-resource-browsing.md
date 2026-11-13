@@ -197,12 +197,12 @@ connection's own `ctx`, so everything started for a cluster stops when it discon
 
   | Section | Resources |
   |---|---|
+  | Cluster | nodes, namespaces, events, apiservices, customresourcedefinitions, leases, webhooks |
   | Workloads | pods, deployments, statefulsets, daemonsets, replicasets, jobs, cronjobs |
   | Network | services, endpointslices, ingresses, ingressclasses, networkpolicies, gateways/httproutes (when served) |
   | Config | configmaps, secrets, resourcequotas, limitranges, horizontalpodautoscalers, poddisruptionbudgets, priorityclasses, runtimeclasses |
   | Storage | persistentvolumeclaims, persistentvolumes, storageclasses, volumeattachments, csidrivers |
   | Access | serviceaccounts, roles, rolebindings, clusterroles, clusterrolebindings |
-  | Cluster | nodes, namespaces, events, apiservices, customresourcedefinitions, leases, webhooks |
   | Custom Resources | every type not in a `*.k8s.io` or core group, grouped by API group |
 
   Other built-in types not in the table go to an **Other** section, so nothing served is ever

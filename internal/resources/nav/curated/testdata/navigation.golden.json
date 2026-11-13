@@ -1,5 +1,40 @@
 [
   {
+    "title": "Cluster",
+    "items": [
+      {
+        "title": "Nodes",
+        "type": {
+          "group": "",
+          "version": "v1",
+          "resource": "nodes",
+          "kind": "Node",
+          "namespaced": false
+        }
+      },
+      {
+        "title": "Namespaces",
+        "type": {
+          "group": "",
+          "version": "v1",
+          "resource": "namespaces",
+          "kind": "Namespace",
+          "namespaced": false
+        }
+      },
+      {
+        "title": "Events",
+        "type": {
+          "group": "",
+          "version": "v1",
+          "resource": "events",
+          "kind": "Event",
+          "namespaced": true
+        }
+      }
+    ]
+  },
+  {
     "title": "Workloads",
     "items": [
       {
@@ -115,41 +150,6 @@
           "resource": "clusterroles",
           "kind": "ClusterRole",
           "namespaced": false
-        }
-      }
-    ]
-  },
-  {
-    "title": "Cluster",
-    "items": [
-      {
-        "title": "Nodes",
-        "type": {
-          "group": "",
-          "version": "v1",
-          "resource": "nodes",
-          "kind": "Node",
-          "namespaced": false
-        }
-      },
-      {
-        "title": "Namespaces",
-        "type": {
-          "group": "",
-          "version": "v1",
-          "resource": "namespaces",
-          "kind": "Namespace",
-          "namespaced": false
-        }
-      },
-      {
-        "title": "Events",
-        "type": {
-          "group": "",
-          "version": "v1",
-          "resource": "events",
-          "kind": "Event",
-          "namespaced": true
         }
       }
     ]
