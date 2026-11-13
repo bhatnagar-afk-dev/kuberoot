@@ -89,3 +89,26 @@ func TestOpenCorrupt(t *testing.T) {
 		t.Fatal("expected parse error")
 	}
 }
+
+func TestNamespacesRoundTripAndCopy(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "settings.json")
+	st, _ := Open(path)
+	if err := st.Update(func(s *Settings) {
+		s.Namespaces = map[string][]string{"ctx1": {"web", "api"}}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	got := st.Get()
+	got.Namespaces["ctx1"][0] = "changed"
+	got.Namespaces["ctx2"] = []string{"x"}
+	if again := st.Get(); again.Namespaces["ctx1"][0] != "web" || len(again.Namespaces) != 1 {
+		t.Errorf("Get returned shared state: %+v", again.Namespaces)
+	}
+	reopened, err := Open(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ns := reopened.Get().Namespaces["ctx1"]; !slices.Equal(ns, []string{"web", "api"}) {
+		t.Errorf("reopened namespaces = %v", ns)
+	}
+}

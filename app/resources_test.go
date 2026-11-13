@@ -1,6 +1,7 @@
 package app
 
 import (
+	"slices"
 	"testing"
 
 	"kuberoot.in/kuberoot/internal/cluster"
@@ -43,7 +44,7 @@ func TestEventSink(t *testing.T) {
 		data any
 	}
 	var got []event
-	sink := eventSink{func(name string, data any) { got = append(got, event{name, data}) }}
+	sink := eventSink{emit: func(name string, data any) { got = append(got, event{name, data}) }}
 
 	batch := resources.RowBatch{ViewID: "v1", Reset: true}
 	status := resources.ViewStatus{ViewID: "v1", Phase: resources.ViewReady}
@@ -58,5 +59,54 @@ func TestEventSink(t *testing.T) {
 	}
 	if got[1].name != EventResourceRows || !got[1].data.(resources.RowBatch).Reset {
 		t.Errorf("rows event = %+v", got[1])
+	}
+}
+
+func TestEventSinkNotFoundAsksForCheck(t *testing.T) {
+	checks := 0
+	sink := eventSink{emit: func(string, any) {}, notFound: func() { checks++ }}
+	sink.Status(resources.ViewStatus{ViewID: "v1", Phase: resources.ViewError})
+	sink.Status(resources.ViewStatus{ViewID: "v1", Phase: resources.ViewError, Reason: resources.ReasonNotFound})
+	if checks != 1 {
+		t.Errorf("checks = %d, want 1", checks)
+	}
+}
+
+func TestNavigationNotConnected(t *testing.T) {
+	s := newTestResourceService(t)
+	id := s.clusters.store.Contexts()[0].ID
+	if _, err := s.Navigation(id); err == nil || err.Error() != cluster.ErrNotConnected.Error() {
+		t.Fatalf("Navigation err = %v, want %v", err, cluster.ErrNotConnected)
+	}
+	if _, err := s.RefreshNavigation(id); err == nil {
+		t.Fatal("RefreshNavigation succeeded while disconnected")
+	}
+}
+
+func TestSavedNamespaces(t *testing.T) {
+	s := newTestResourceService(t)
+	if got := s.SavedNamespaces("c1"); got == nil || len(got) != 0 {
+		t.Fatalf("SavedNamespaces before saving = %#v, want empty", got)
+	}
+	if err := s.SaveNamespaces("c1", []string{"web", "api"}); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SaveNamespaces("c2", []string{"kube-system"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.SavedNamespaces("c1"); !slices.Equal(got, []string{"web", "api"}) {
+		t.Errorf("c1 = %v", got)
+	}
+	if err := s.SaveNamespaces("c1", nil); err != nil {
+		t.Fatal(err)
+	}
+	if got := s.SavedNamespaces("c1"); len(got) != 0 {
+		t.Errorf("c1 after saving all namespaces = %v, want empty", got)
+	}
+	if _, ok := s.clusters.settings.Get().Namespaces["c1"]; ok {
+		t.Error("an all-namespaces choice is stored; want the entry removed")
+	}
+	if got := s.SavedNamespaces("c2"); !slices.Equal(got, []string{"kube-system"}) {
+		t.Errorf("c2 = %v", got)
 	}
 }

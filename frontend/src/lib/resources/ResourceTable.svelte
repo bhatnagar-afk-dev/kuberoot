@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, untrack } from 'svelte';
+  import { onMount, untrack, type Snippet } from 'svelte';
   import { ResourceView, ViewPhase, clock, type ViewSpec } from './resources.svelte';
   import {
     comparator,
@@ -15,17 +15,31 @@
     spec,
     title,
     connected,
+    tools,
   }: {
     spec: ViewSpec;
     title: string;
     /** Whether the cluster is connected; the view reopens when it reconnects. */
     connected: boolean;
+    /** Extra controls for the toolbar, e.g. a namespace picker. */
+    tools?: Snippet;
   } = $props();
 
   const ROW_HEIGHT = 28;
 
-  // A new spec is a new component instance (keyed by the parent).
+  // A new context or type is a new component instance (keyed by the parent);
+  // a namespace change reopens the view and keeps the rows until it's ready.
   const view = untrack(() => new ResourceView(spec));
+  $effect(() => {
+    const namespaces = spec.namespaces;
+    untrack(() => {
+      if (!sameList(namespaces, view.spec.namespaces)) void view.setNamespaces(namespaces);
+    });
+  });
+
+  function sameList(a: string[], b: string[]): boolean {
+    return a.length === b.length && a.every((x, i) => x === b[i]);
+  }
 
   onMount(() => {
     void view.open();
@@ -50,7 +64,7 @@
   let sortBy: number | null = $state(null); // index into columns
   let desc = $state(false);
 
-  const withNamespace = $derived(spec.type.namespaced && spec.namespaces.length !== 1);
+  const withNamespace = $derived(view.spec.type.namespaced && view.spec.namespaces.length !== 1);
   const columns: DisplayColumn[] = $derived(displayColumns(view.columns, withNamespace));
   const shown = $derived.by(() => {
     const rows = filterRows(view.rows, filter);
@@ -106,7 +120,10 @@
     {#if phase === ViewPhase.ViewLoading && view.rows.length > 0}
       <span class="muted">Updating…</span>
     {/if}
-    <input type="search" placeholder="Filter" bind:value={filter} spellcheck="false" aria-label="Filter rows" />
+    <div class="tools">
+      {@render tools?.()}
+      <input type="search" placeholder="Filter" bind:value={filter} spellcheck="false" aria-label="Filter rows" />
+    </div>
   </div>
 
   {#if phase === ViewPhase.ViewStale}
@@ -178,8 +195,13 @@
     color: var(--muted);
     font-size: 12px;
   }
-  input {
+  .tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     margin-left: auto;
+  }
+  input {
     width: 220px;
     padding: 5px 10px;
     border: 1px solid var(--border);

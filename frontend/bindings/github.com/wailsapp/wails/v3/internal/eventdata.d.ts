@@ -20,6 +20,7 @@ declare module "@wailsio/runtime" {
         interface CustomEvents {
             "clusters:changed": app$0.Snapshot;
             "clusters:status": cluster$0.Status;
+            "resources:navstale": resources$0.NavStale;
             "resources:rows": resources$0.RowBatch;
             "resources:viewstatus": resources$0.ViewStatus;
         }

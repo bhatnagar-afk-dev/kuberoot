@@ -7,6 +7,10 @@ export {
 
 export type {
     Column,
+    NavGroup,
+    NavItem,
+    NavStale,
+    Navigation,
     ResourceType,
     Row,
     RowBatch,

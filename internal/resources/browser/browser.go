@@ -16,7 +16,7 @@ import (
 )
 
 // SinkFactory returns the sink that receives one view's output.
-type SinkFactory func(viewID string) resources.Sink
+type SinkFactory func(req resources.ViewRequest) resources.Sink
 
 // ErrClosed is returned by Open after Close.
 var ErrClosed = errors.New("resource browser is closed")
@@ -87,7 +87,7 @@ func (b *Browser) open(req resources.ViewRequest) (*view.View, error) {
 		ViewID:     req.ViewID,
 		Type:       req.Type,
 		Namespaces: req.Namespaces,
-	}, b.sinks(req.ViewID), b.opts)
+	}, b.sinks(req), b.opts)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %s", req.Type.Resource, redact.String(err.Error()))
 	}

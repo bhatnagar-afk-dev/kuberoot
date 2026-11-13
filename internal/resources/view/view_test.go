@@ -333,6 +333,17 @@ func TestOtherErrorsAreRedacted(t *testing.T) {
 	}
 }
 
+func TestNotFoundReason(t *testing.T) {
+	subs := newFakeSubscriber()
+	v, sink, _ := open(t, Request{Type: pods}, subs, Options{})
+	subs.handler(t, "").Error(apierrors.NewNotFound(schema.GroupResource{Resource: "pods"}, ""))
+	v.flush()
+	_, statuses := sink.take()
+	if st := statuses[0]; st.Phase != resources.ViewError || st.Reason != resources.ReasonNotFound {
+		t.Errorf("status = %+v, want error with reason NotFound", st)
+	}
+}
+
 func TestOpenFailureClosesSubscriptions(t *testing.T) {
 	subs := newFakeSubscriber()
 	subs.failOn = "web"

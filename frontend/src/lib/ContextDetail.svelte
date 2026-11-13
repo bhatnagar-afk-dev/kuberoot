@@ -1,7 +1,19 @@
 <script lang="ts">
+  import { onMount, untrack } from 'svelte';
   import { clusters, shortPath, Phase, type Context } from './clusters.svelte';
   import StatusDot from './StatusDot.svelte';
+  import NamespacePicker from './resources/NamespacePicker.svelte';
+  import Nav from './resources/Nav.svelte';
   import ResourceTable from './resources/ResourceTable.svelte';
+  import {
+    navigation,
+    savedNamespaces,
+    saveNamespaces,
+    select,
+    selection,
+    typeKey,
+    type Selection,
+  } from './resources/navigation.svelte';
   import type { ViewSpec } from './resources/resources.svelte';
 
   let { context }: { context: Context } = $props();
@@ -18,11 +30,38 @@
     if (connected) browsing = true;
   });
 
-  // Hard-wired until navigation arrives.
-  const pods: ViewSpec = $derived({
+  const nav = untrack(() => navigation(context.id));
+  // Load the tree on connect and again on every reconnect.
+  $effect(() => {
+    if (connected) untrack(() => void nav.load());
+  });
+
+  let current: Selection = $state(untrack(() => selection(context.id)));
+  let namespaces: string[] = $state([]);
+  let namespacesLoaded = $state(false);
+  onMount(() => {
+    void savedNamespaces(context.id).then((ns) => {
+      namespaces = ns;
+      namespacesLoaded = true;
+    });
+  });
+
+  function choose(s: Selection) {
+    current = s;
+    select(context.id, s);
+  }
+
+  function setNamespaces(ns: string[]) {
+    namespaces = ns;
+    saveNamespaces(context.id, ns);
+  }
+
+  // Cluster-scoped types ignore namespaces, so changing them doesn't reopen
+  // the view.
+  const spec: ViewSpec = $derived({
     contextId: context.id,
-    type: { group: '', version: 'v1', resource: 'pods', kind: 'Pod', namespaced: true },
-    namespaces: [],
+    type: current.type,
+    namespaces: current.type.namespaced ? namespaces : [],
   });
 
   const phaseLabel: Record<string, string> = {
@@ -118,7 +157,25 @@
         {#if showInfo}{@render info()}{/if}
       </div>
     {/if}
-    <ResourceTable spec={pods} title="Pods" {connected} />
+    <div class="workspace">
+      <Nav {nav} selected={typeKey(current.type)} onselect={choose} />
+      {#if namespacesLoaded}
+        {#key typeKey(current.type)}
+          <ResourceTable {spec} title={current.title} {connected}>
+            {#snippet tools()}
+              <NamespacePicker
+                contextId={context.id}
+                {connected}
+                fallback={context.namespace}
+                selected={namespaces}
+                disabled={!current.type.namespaced}
+                onchange={setNamespaces}
+              />
+            {/snippet}
+          </ResourceTable>
+        {/key}
+      {/if}
+    </div>
   </section>
 {:else}
   <section class="detail">
@@ -249,6 +306,12 @@
     overflow: hidden;
     text-overflow: ellipsis;
   }
+  .workspace {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+  }
+  .workspace > :global(.table) { min-width: 0; }
   .info {
     padding: 12px 16px;
     border-bottom: 1px solid var(--border);
