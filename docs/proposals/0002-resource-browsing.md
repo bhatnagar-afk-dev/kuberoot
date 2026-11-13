@@ -271,13 +271,18 @@ New service `app.ResourceService`, a thin wrapper over `resources.Browser`:
 ```go
 func (s *ResourceService) Navigation(contextID string) ([]resources.NavGroup, error)
 func (s *ResourceService) RefreshNavigation(contextID string) ([]resources.NavGroup, error)
-func (s *ResourceService) Open(req resources.ViewRequest) (resources.ViewInfo, error) // returns viewId + columns; rows arrive as events
+func (s *ResourceService) Open(req resources.ViewRequest) error // rows and columns arrive as events
 func (s *ResourceService) SetNamespaces(viewID string, namespaces []string) error  // nil/empty = all
 func (s *ResourceService) Close(viewID string)
-func (s *ResourceService) OpenEvents(ref resources.ObjectRef) (resources.ViewInfo, error)
+func (s *ResourceService) OpenEvents(viewID string, ref resources.ObjectRef) error
 func (s *ResourceService) Describe(ref resources.ObjectRef) (string, error)
 func (s *ResourceService) YAML(ref resources.ObjectRef, opts resources.YAMLOptions) (string, error)
 ```
+
+The UI chooses each view's ID (`ViewRequest.ViewID`, unique per app session) and starts
+routing events for it before calling `Open`, so no batch can arrive for a view the UI does not
+know yet. Columns come with the first (`reset`) batch, because they are only known once the
+first LIST returns.
 
 Types sent to the UI:
 
@@ -290,6 +295,13 @@ type ResourceType struct {
 type NavGroup struct {
     Title string          `json:"title"`
     Items []NavItem       `json:"items"`  // Title + ResourceType; may nest one level (CRD API groups)
+}
+
+type ViewRequest struct {
+    ViewID     string       `json:"viewId"`
+    ContextID  string       `json:"contextId"`
+    Type       ResourceType `json:"type"`
+    Namespaces []string     `json:"namespaces"` // empty = all namespaces
 }
 
 type ObjectRef struct {
@@ -319,7 +331,7 @@ Events (registered with `application.RegisterEvent`):
 
 | Event | Payload | When |
 |---|---|---|
-| `resources:rows` | `RowBatch{viewId, reset, upserts []Row, deletes []string}` | Batched changes, ≤10/s per view |
+| `resources:rows` | `RowBatch{viewId, reset, columns, upserts []Row, deletes []string}` (`columns` on reset) | Batched changes, ≤10/s per view |
 | `resources:navstale` | `{contextId}` | `Catalog.Changed` found new or removed resource types |
 | `resources:viewstatus` | `ViewStatus{viewId, phase, forbidden []string, reason, message}` | loading → ready, forbidden namespaces, disconnected, error |
 
