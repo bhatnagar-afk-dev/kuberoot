@@ -19,6 +19,11 @@ export const ClustersChanged = "clusters:changed";
 export const ClustersStatus = "clusters:status";
 
 /**
+ * Name of the custom event "resources:navstale".
+ */
+export const ResourcesNavstale = "resources:navstale";
+
+/**
  * Name of the custom event "resources:rows".
  */
 export const ResourcesRows = "resources:rows";

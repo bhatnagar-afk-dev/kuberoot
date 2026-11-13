@@ -20,11 +20,21 @@ type Settings struct {
 	HiddenSources []string `json:"hiddenSources,omitempty"`
 	// ActiveContext is the ID of the last selected context.
 	ActiveContext string `json:"activeContext,omitempty"`
+	// Namespaces are the namespaces last chosen per context ID. A context
+	// without an entry shows all namespaces.
+	Namespaces map[string][]string `json:"namespaces,omitempty"`
 }
 
 func (s Settings) clone() Settings {
 	s.Sources = slices.Clone(s.Sources)
 	s.HiddenSources = slices.Clone(s.HiddenSources)
+	if s.Namespaces != nil {
+		ns := make(map[string][]string, len(s.Namespaces))
+		for id, list := range s.Namespaces {
+			ns[id] = slices.Clone(list)
+		}
+		s.Namespaces = ns
+	}
 	return s
 }
 

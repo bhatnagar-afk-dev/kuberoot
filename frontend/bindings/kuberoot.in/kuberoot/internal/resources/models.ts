@@ -25,6 +25,58 @@ export interface Column {
 }
 
 /**
+ * NavGroup is a top-level section of the navigation tree.
+ */
+export interface NavGroup {
+    "title": string;
+    "items": NavItem[] | null;
+}
+
+/**
+ * NavItem is an entry in the navigation tree: a resource type, or a folder
+ * of resource types (one API group of custom resources).
+ */
+export interface NavItem {
+    "title": string;
+
+    /**
+     * nil for a folder
+     */
+    "type"?: ResourceType | null;
+
+    /**
+     * a folder's entries
+     */
+    "items"?: NavItem[] | null;
+}
+
+/**
+ * NavStale is sent when a cluster's resource types change.
+ */
+export interface NavStale {
+    "contextId": string;
+}
+
+/**
+ * Navigation is the navigation tree of one cluster.
+ */
+export interface Navigation {
+    "groups": NavGroup[] | null;
+
+    /**
+     * Failed lists the API group versions whose resource types could not be
+     * read (e.g. an aggregated API that is down); they are missing from Groups.
+     */
+    "failed"?: string[] | null;
+
+    /**
+     * Stale is true when the server's resource types have changed since the
+     * tree was built; RefreshNavigation rebuilds it.
+     */
+    "stale"?: boolean;
+}
+
+/**
  * ResourceType identifies a listable kind of resource on a cluster.
  */
 export interface ResourceType {
@@ -131,5 +183,10 @@ export interface ViewStatus {
      * cluster-wide (all namespaces or cluster-scoped) list was forbidden.
      */
     "forbidden"?: string[] | null;
+
+    /**
+     * Reason is ReasonNotFound when the server no longer serves the type.
+     */
+    "reason"?: string;
     "message"?: string;
 }

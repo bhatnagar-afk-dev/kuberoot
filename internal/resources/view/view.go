@@ -244,6 +244,9 @@ func (v *View) statusLocked() resources.ViewStatus {
 			st.Forbidden = append(st.Forbidden, ns)
 			failed++
 		case p.err != nil:
+			if apierrors.IsNotFound(p.err) {
+				st.Reason = resources.ReasonNotFound
+			}
 			other = append(other, redact.String(p.err.Error()))
 			failed++
 		case !p.synced:
@@ -273,7 +276,7 @@ func (v *View) statusLocked() resources.ViewStatus {
 }
 
 func sameStatus(a, b resources.ViewStatus) bool {
-	return a.ViewID == b.ViewID && a.Phase == b.Phase && a.Message == b.Message && slices.Equal(a.Forbidden, b.Forbidden)
+	return a.ViewID == b.ViewID && a.Phase == b.Phase && a.Reason == b.Reason && a.Message == b.Message && slices.Equal(a.Forbidden, b.Forbidden)
 }
 
 func quoteList(names []string) string {
