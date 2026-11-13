@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { tick, untrack } from 'svelte';
   import { SvelteSet } from 'svelte/reactivity';
   import { typeKey, type NavItem, type NavState, type Selection } from './navigation.svelte';
 
@@ -13,14 +14,52 @@
     onselect: (s: Selection) => void;
   } = $props();
 
-  // Sections start open and folders (CRD API groups) closed, except the one
-  // holding the selected type.
-  const closedSections = new SvelteSet<string>();
+  // Sections and folders (CRD API groups) start closed, so every section
+  // heading fits on screen. The ones holding the selected type are opened
+  // when the tree loads; after that the user decides.
+  const openSections = new SvelteSet<string>();
   const openFolders = new SvelteSet<string>();
 
-  function holdsSelected(folder: NavItem): boolean {
-    return (folder.items ?? []).some((it) => it.type && typeKey(it.type) === selected);
+  function isSelected(it: NavItem): boolean {
+    return !!it.type && typeKey(it.type) === selected;
   }
+
+  $effect(() => {
+    const groups = nav.groups;
+    void selected;
+    untrack(() => {
+      for (const g of groups) {
+        for (const it of g.items ?? []) {
+          if (isSelected(it)) openSections.add(g.title);
+          if ((it.items ?? []).some(isSelected)) {
+            openSections.add(g.title);
+            openFolders.add(it.title);
+          }
+        }
+      }
+    });
+  });
+
+  // Show a fade at the bottom while there is more to scroll to.
+  let scroller: HTMLElement | undefined = $state();
+  let clientHeight = $state(0);
+  let more = $state(false);
+
+  function measure() {
+    if (scroller) more = scroller.scrollTop + scroller.clientHeight < scroller.scrollHeight - 1;
+  }
+
+  $effect(() => {
+    // Re-measure when the size or the content changes.
+    void clientHeight;
+    void nav.groups;
+    void nav.stale;
+    void nav.error;
+    void nav.failed;
+    void openSections.size;
+    void openFolders.size;
+    void tick().then(measure);
+  });
 
   function toggle(set: SvelteSet<string>, key: string) {
     if (set.has(key)) set.delete(key);
@@ -42,65 +81,84 @@
   {/if}
 {/snippet}
 
-<nav aria-label="Resource types">
-  {#if nav.stale}
-    <div class="notice" role="status">
-      <span>Resource types changed</span>
-      <button class="link" disabled={nav.loading} onclick={() => nav.refresh()}>Refresh</button>
-    </div>
-  {/if}
-  {#if nav.error}
-    <div class="notice warn" role="status">
-      <span>{nav.error}</span>
-      <button class="link" disabled={nav.loading} onclick={() => nav.load()}>Retry</button>
-    </div>
-  {/if}
-  {#if nav.failed.length > 0}
-    <div class="notice warn" role="status" title={nav.failed.join('\n')}>
-      <span>Couldn't load {nav.failed.length === 1 ? nav.failed[0] : `${nav.failed.length} API groups`}</span>
-    </div>
-  {/if}
+<div class="wrap">
+  <nav aria-label="Resource types" bind:this={scroller} bind:clientHeight onscroll={measure}>
+    {#if nav.stale}
+      <div class="notice" role="status">
+        <span>Resource types changed</span>
+        <button class="link" disabled={nav.loading} onclick={() => nav.refresh()}>Refresh</button>
+      </div>
+    {/if}
+    {#if nav.error}
+      <div class="notice warn" role="status">
+        <span>{nav.error}</span>
+        <button class="link" disabled={nav.loading} onclick={() => nav.load()}>Retry</button>
+      </div>
+    {/if}
+    {#if nav.failed.length > 0}
+      <div class="notice warn" role="status" title={nav.failed.join('\n')}>
+        <span>Couldn't load {nav.failed.length === 1 ? nav.failed[0] : `${nav.failed.length} API groups`}</span>
+      </div>
+    {/if}
 
-  {#if nav.groups.length === 0 && nav.loading}
-    <p class="muted">Loading…</p>
-  {/if}
+    {#if nav.groups.length === 0 && nav.loading}
+      <p class="muted">Loading…</p>
+    {/if}
 
-  {#each nav.groups as group (group.title)}
-    {@const open = !closedSections.has(group.title)}
-    <section>
-      <button class="section" aria-expanded={open} onclick={() => toggle(closedSections, group.title)}>
-        <span class="caret" class:open>▸</span>{group.title}
-      </button>
-      {#if open}
-        {#each group.items as item (item.title)}
-          {#if item.type}
-            {@render entry(item)}
-          {:else}
-            {@const folderOpen = openFolders.has(item.title) || holdsSelected(item)}
-            <button class="folder" aria-expanded={folderOpen} onclick={() => toggle(openFolders, item.title)}>
-              <span class="caret" class:open={folderOpen}>▸</span>{item.title}
-            </button>
-            {#if folderOpen}
-              <div class="nested">
-                {#each item.items ?? [] as child (child.title)}
-                  {@render entry(child)}
-                {/each}
-              </div>
+    {#each nav.groups as group (group.title)}
+      {@const open = openSections.has(group.title)}
+      <section>
+        <button class="section" aria-expanded={open} onclick={() => toggle(openSections, group.title)}>
+          <span class="caret" class:open>▸</span>{group.title}
+        </button>
+        {#if open}
+          {#each group.items as item (item.title)}
+            {#if item.type}
+              {@render entry(item)}
+            {:else}
+              {@const folderOpen = openFolders.has(item.title)}
+              <button class="folder" aria-expanded={folderOpen} onclick={() => toggle(openFolders, item.title)}>
+                <span class="caret" class:open={folderOpen}>▸</span>{item.title}
+              </button>
+              {#if folderOpen}
+                <div class="nested">
+                  {#each item.items ?? [] as child (child.title)}
+                    {@render entry(child)}
+                  {/each}
+                </div>
+              {/if}
             {/if}
-          {/if}
-        {/each}
-      {/if}
-    </section>
-  {/each}
-</nav>
+          {/each}
+        {/if}
+      </section>
+    {/each}
+  </nav>
+  {#if more}<div class="fade" aria-hidden="true"></div>{/if}
+</div>
 
 <style>
-  nav {
+  .wrap {
+    position: relative;
+    display: flex;
     width: 210px;
     flex: none;
+    min-height: 0;
+    border-right: 1px solid var(--border);
+  }
+  nav {
+    flex: 1;
+    min-width: 0;
     overflow-y: auto;
     padding: 8px 6px 16px;
-    border-right: 1px solid var(--border);
+  }
+  .fade {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 32px;
+    background: linear-gradient(to bottom, transparent, var(--bg));
+    pointer-events: none;
   }
   section { margin-bottom: 4px; }
   button {
