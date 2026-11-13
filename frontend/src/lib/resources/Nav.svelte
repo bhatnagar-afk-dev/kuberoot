@@ -82,6 +82,17 @@
 {/snippet}
 
 <div class="wrap">
+  <header>
+    <span>Resources</span>
+    <button
+      class="refresh"
+      class:spinning={nav.loading}
+      disabled={nav.loading}
+      title="Reload resource types from the cluster"
+      aria-label="Reload resource types"
+      onclick={() => nav.refresh()}>↻</button
+    >
+  </header>
   <nav aria-label="Resource types" bind:this={scroller} bind:clientHeight onscroll={measure}>
     {#if nav.stale}
       <div class="notice" role="status">
@@ -98,6 +109,7 @@
     {#if nav.failed.length > 0}
       <div class="notice warn" role="status" title={nav.failed.join('\n')}>
         <span>Couldn't load {nav.failed.length === 1 ? nav.failed[0] : `${nav.failed.length} API groups`}</span>
+        <button class="link" disabled={nav.loading} onclick={() => nav.refresh()}>Retry</button>
       </div>
     {/if}
 
@@ -140,16 +152,42 @@
   .wrap {
     position: relative;
     display: flex;
+    flex-direction: column;
     width: 210px;
     flex: none;
     min-height: 0;
     border-right: 1px solid var(--border);
   }
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 8px 4px 14px;
+    color: var(--muted);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+  .refresh {
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    color: var(--muted);
+    font-size: 15px;
+  }
+  .refresh:hover:not(:disabled) { color: var(--text); }
+  .refresh:disabled { cursor: default; }
+  .refresh.spinning { animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
   nav {
     flex: 1;
+    min-height: 0;
     min-width: 0;
     overflow-y: auto;
-    padding: 8px 6px 16px;
+    padding: 4px 6px 16px;
   }
   .fade {
     position: absolute;

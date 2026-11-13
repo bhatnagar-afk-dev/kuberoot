@@ -247,3 +247,28 @@ func TestChangedSeesFailingGroup(t *testing.T) {
 		t.Errorf("Changed when a group fails = %v, %v; want true", changed, err)
 	}
 }
+
+func TestChangedSeesRecoveredGroup(t *testing.T) {
+	f, s := newFakeDiscovery(t)
+	f.set("metrics.k8s.io/v1beta1", []metav1.APIResource{{Name: "pods", Kind: "PodMetrics", Namespaced: true, Verbs: listWatch}})
+	f.setBroken("metrics.k8s.io/v1beta1", true)
+	c := newCatalog(t, s)
+	ctx := context.Background()
+	if _, err := c.ResourceTypes(ctx); err == nil {
+		t.Fatal("want a partial discovery error while the group is down")
+	}
+	if changed, err := c.Changed(ctx); err != nil || changed {
+		t.Fatalf("Changed while still down = %v, %v; want false", changed, err)
+	}
+	f.setBroken("metrics.k8s.io/v1beta1", false)
+	if changed, err := c.Changed(ctx); err != nil || !changed {
+		t.Fatalf("Changed after the group recovered = %v, %v; want true", changed, err)
+	}
+	types, err := c.Refresh(ctx)
+	if err != nil {
+		t.Fatalf("Refresh after recovery = %v, want no partial error", err)
+	}
+	if !slices.Contains(names(types), "metrics.k8s.io/pods") {
+		t.Errorf("Refresh = %v, want the recovered group's types", names(types))
+	}
+}
