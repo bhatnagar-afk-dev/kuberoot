@@ -82,3 +82,25 @@ type ViewStatus struct {
 	Forbidden []string `json:"forbidden,omitempty"`
 	Message   string   `json:"message,omitempty"`
 }
+
+// NavItem is an entry in the navigation tree: a resource type, or a folder
+// of resource types (one API group of custom resources).
+type NavItem struct {
+	Title string        `json:"title"`
+	Type  *ResourceType `json:"type,omitempty"`  // nil for a folder
+	Items []NavItem     `json:"items,omitempty"` // a folder's entries
+}
+
+// NavGroup is a top-level section of the navigation tree.
+type NavGroup struct {
+	Title string    `json:"title"`
+	Items []NavItem `json:"items"`
+}
+
+// Navigation is the navigation tree of one cluster.
+type Navigation struct {
+	Groups []NavGroup `json:"groups"`
+	// Failed lists the API group versions whose resource types could not be
+	// read (e.g. an aggregated API that is down); they are missing from Groups.
+	Failed []string `json:"failed,omitempty"`
+}

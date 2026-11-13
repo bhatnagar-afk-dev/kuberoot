@@ -1,0 +1,262 @@
+[
+  {
+    "title": "Workloads",
+    "items": [
+      {
+        "title": "Pods",
+        "type": {
+          "group": "",
+          "version": "v1",
+          "resource": "pods",
+          "kind": "Pod",
+          "namespaced": true
+        }
+      },
+      {
+        "title": "Deployments",
+        "type": {
+          "group": "apps",
+          "version": "v1",
+          "resource": "deployments",
+          "kind": "Deployment",
+          "namespaced": true
+        }
+      },
+      {
+        "title": "ReplicaSets",
+        "type": {
+          "group": "apps",
+          "version": "v1",
+          "resource": "replicasets",
+          "kind": "ReplicaSet",
+          "namespaced": true
+        }
+      },
+      {
+        "title": "Jobs",
+        "type": {
+          "group": "batch",
+          "version": "v1",
+          "resource": "jobs",
+          "kind": "Job",
+          "namespaced": true
+        }
+      }
+    ]
+  },
+  {
+    "title": "Network",
+    "items": [
+      {
+        "title": "Services",
+        "type": {
+          "group": "",
+          "version": "v1",
+          "resource": "services",
+          "kind": "Service",
+          "namespaced": true
+        }
+      },
+      {
+        "title": "Ingresses",
+        "type": {
+          "group": "networking.k8s.io",
+          "version": "v1",
+          "resource": "ingresses",
+          "kind": "Ingress",
+          "namespaced": true
+        }
+      },
+      {
+        "title": "NetworkPolicies",
+        "type": {
+          "group": "networking.k8s.io",
+          "version": "v1",
+          "resource": "networkpolicies",
+          "kind": "NetworkPolicy",
+          "namespaced": true
+        }
+      }
+    ]
+  },
+  {
+    "title": "Config",
+    "items": [
+      {
+        "title": "ConfigMaps",
+        "type": {
+          "group": "",
+          "version": "v1",
+          "resource": "configmaps",
+          "kind": "ConfigMap",
+          "namespaced": true
+        }
+      },
+      {
+        "title": "Secrets",
+        "type": {
+          "group": "",
+          "version": "v1",
+          "resource": "secrets",
+          "kind": "Secret",
+          "namespaced": true
+        }
+      }
+    ]
+  },
+  {
+    "title": "Access",
+    "items": [
+      {
+        "title": "ClusterRoles",
+        "type": {
+          "group": "rbac.authorization.k8s.io",
+          "version": "v1",
+          "resource": "clusterroles",
+          "kind": "ClusterRole",
+          "namespaced": false
+        }
+      }
+    ]
+  },
+  {
+    "title": "Cluster",
+    "items": [
+      {
+        "title": "Nodes",
+        "type": {
+          "group": "",
+          "version": "v1",
+          "resource": "nodes",
+          "kind": "Node",
+          "namespaced": false
+        }
+      },
+      {
+        "title": "Namespaces",
+        "type": {
+          "group": "",
+          "version": "v1",
+          "resource": "namespaces",
+          "kind": "Namespace",
+          "namespaced": false
+        }
+      },
+      {
+        "title": "Events",
+        "type": {
+          "group": "",
+          "version": "v1",
+          "resource": "events",
+          "kind": "Event",
+          "namespaced": true
+        }
+      }
+    ]
+  },
+  {
+    "title": "Custom Resources",
+    "items": [
+      {
+        "title": "argoproj.io",
+        "items": [
+          {
+            "title": "AppProjects",
+            "type": {
+              "group": "argoproj.io",
+              "version": "v1alpha1",
+              "resource": "appprojects",
+              "kind": "AppProject",
+              "namespaced": true
+            }
+          },
+          {
+            "title": "Applications",
+            "type": {
+              "group": "argoproj.io",
+              "version": "v1alpha1",
+              "resource": "applications",
+              "kind": "Application",
+              "namespaced": true
+            }
+          }
+        ]
+      },
+      {
+        "title": "cert-manager.io",
+        "items": [
+          {
+            "title": "Certificates",
+            "type": {
+              "group": "cert-manager.io",
+              "version": "v1",
+              "resource": "certificates",
+              "kind": "Certificate",
+              "namespaced": true
+            }
+          }
+        ]
+      },
+      {
+        "title": "cluster.x-k8s.io",
+        "items": [
+          {
+            "title": "Clusters",
+            "type": {
+              "group": "cluster.x-k8s.io",
+              "version": "v1beta1",
+              "resource": "clusters",
+              "kind": "Cluster",
+              "namespaced": true
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "title": "Other",
+    "items": [
+      {
+        "title": "Endpoints",
+        "type": {
+          "group": "",
+          "version": "v1",
+          "resource": "endpoints",
+          "kind": "Endpoints",
+          "namespaced": true
+        }
+      },
+      {
+        "title": "Events (events.k8s.io)",
+        "type": {
+          "group": "events.k8s.io",
+          "version": "v1",
+          "resource": "events",
+          "kind": "Event",
+          "namespaced": true
+        }
+      },
+      {
+        "title": "PodTemplates",
+        "type": {
+          "group": "",
+          "version": "v1",
+          "resource": "podtemplates",
+          "kind": "PodTemplate",
+          "namespaced": true
+        }
+      },
+      {
+        "title": "VolumeSnapshots",
+        "type": {
+          "group": "snapshot.storage.k8s.io",
+          "version": "v1",
+          "resource": "volumesnapshots",
+          "kind": "VolumeSnapshot",
+          "namespaced": true
+        }
+      }
+    ]
+  }
+]
