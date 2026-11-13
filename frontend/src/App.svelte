@@ -56,7 +56,10 @@
     grid-row: 1 / 3;
   }
   .content {
+    display: flex;
+    flex-direction: column;
     min-width: 0;
+    min-height: 0;
     overflow-y: auto;
   }
   .welcome {
