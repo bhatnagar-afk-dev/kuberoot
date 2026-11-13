@@ -1,11 +1,29 @@
 <script lang="ts">
   import { clusters, shortPath, Phase, type Context } from './clusters.svelte';
   import StatusDot from './StatusDot.svelte';
+  import ResourceTable from './resources/ResourceTable.svelte';
+  import type { ViewSpec } from './resources/resources.svelte';
 
   let { context }: { context: Context } = $props();
 
   const status = $derived(clusters.status(context.id));
+  const connected = $derived(status.phase === Phase.PhaseConnected);
   let showDetail = $state(false);
+  let showInfo = $state(false);
+
+  // Once connected, keep the browser shown (dimmed while disconnected) so the
+  // last rows stay visible. The parent re-creates this component per context.
+  let browsing = $state(false);
+  $effect(() => {
+    if (connected) browsing = true;
+  });
+
+  // Hard-wired until navigation arrives.
+  const pods: ViewSpec = $derived({
+    contextId: context.id,
+    type: { group: '', version: 'v1', resource: 'pods', kind: 'Pod', namespaced: true },
+    namespaces: [],
+  });
 
   const phaseLabel: Record<string, string> = {
     [Phase.PhaseDisconnected]: 'Disconnected',
@@ -24,26 +42,18 @@
   };
 </script>
 
-<section class="detail">
-  <header>
-    <h1>{context.name}</h1>
-    <div class="phase">
-      <StatusDot phase={status.phase} />
-      {phaseLabel[status.phase] ?? status.phase}
-    </div>
-  </header>
+{#snippet actions()}
+  {#if status.phase === Phase.PhaseConnected}
+    <button onclick={() => clusters.disconnect(context.id)}>Disconnect</button>
+  {:else if status.phase === Phase.PhaseError}
+    <button class="primary" onclick={() => clusters.connect(context.id)}>Retry</button>
+    <button onclick={() => clusters.disconnect(context.id)}>Dismiss</button>
+  {:else if status.phase === Phase.PhaseDisconnected}
+    <button class="primary" onclick={() => clusters.connect(context.id)}>Connect</button>
+  {/if}
+{/snippet}
 
-  <div class="actions">
-    {#if status.phase === Phase.PhaseConnected}
-      <button onclick={() => clusters.disconnect(context.id)}>Disconnect</button>
-    {:else if status.phase === Phase.PhaseError}
-      <button class="primary" onclick={() => clusters.connect(context.id)}>Retry</button>
-      <button onclick={() => clusters.disconnect(context.id)}>Dismiss</button>
-    {:else if status.phase === Phase.PhaseDisconnected}
-      <button class="primary" onclick={() => clusters.connect(context.id)}>Connect</button>
-    {/if}
-  </div>
-
+{#snippet banner()}
   {#if status.message}
     <div class="banner" class:warn={status.phase === Phase.PhaseError} role="status">
       <p>{status.message}</p>
@@ -57,7 +67,9 @@
       {/if}
     </div>
   {/if}
+{/snippet}
 
+{#snippet info()}
   <dl>
     <dt>Server</dt>
     <dd class="mono">{context.server || '—'}</dd>
@@ -83,9 +95,46 @@
     <dt>Kubeconfig</dt>
     <dd class="mono" title={context.source}>{shortPath(context.source)}</dd>
   </dl>
+{/snippet}
 
-  <p class="next">Resource browsing arrives in M2.</p>
-</section>
+{#if browsing}
+  <section class="browser">
+    <header class="strip">
+      <h1>{context.name}</h1>
+      <div class="phase">
+        <StatusDot phase={status.phase} />
+        {phaseLabel[status.phase] ?? status.phase}
+      </div>
+      {#if status.serverVersion}<span class="meta">{status.serverVersion}</span>{/if}
+      {#if status.identity}<span class="meta mono">{status.identity}</span>{/if}
+      <div class="actions">
+        <button class="link" onclick={() => (showInfo = !showInfo)}>{showInfo ? 'Hide details' : 'Details'}</button>
+        {@render actions()}
+      </div>
+    </header>
+    {#if showInfo || status.message}
+      <div class="info">
+        {@render banner()}
+        {#if showInfo}{@render info()}{/if}
+      </div>
+    {/if}
+    <ResourceTable spec={pods} title="Pods" {connected} />
+  </section>
+{:else}
+  <section class="detail">
+    <header>
+      <h1>{context.name}</h1>
+      <div class="phase">
+        <StatusDot phase={status.phase} />
+        {phaseLabel[status.phase] ?? status.phase}
+      </div>
+    </header>
+
+    <div class="actions">{@render actions()}</div>
+    {@render banner()}
+    {@render info()}
+  </section>
+{/if}
 
 <style>
   .detail {
@@ -174,8 +223,36 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 13px;
   }
-  .next {
-    margin-top: 32px;
-    color: var(--muted);
+  .browser {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
   }
+  .strip {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+  }
+  .strip h1 { font-size: 16px; }
+  .strip .actions {
+    margin: 0 0 0 auto;
+    align-items: center;
+  }
+  .strip button { padding: 4px 12px; }
+  .meta {
+    color: var(--muted);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .info {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .info .banner { margin-bottom: 12px; }
+  .info .banner:last-child { margin-bottom: 0; }
 </style>
