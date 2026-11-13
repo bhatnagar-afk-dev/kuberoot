@@ -43,11 +43,15 @@ export class ResourceView {
   rows: Row[] = $state.raw([]);
   status: ViewStatus = $state.raw({ viewId: '', phase: ViewPhase.ViewLoading });
 
+  spec: ViewSpec;
+
   private id = '';
   private byUID = new Map<string, Row>();
   private publishPending = false;
 
-  constructor(readonly spec: ViewSpec) {}
+  constructor(spec: ViewSpec) {
+    this.spec = $state.raw(spec);
+  }
 
   /** Starts the view. Rows from an earlier session stay until the new reset. */
   async open() {
@@ -76,6 +80,12 @@ export class ResourceView {
   async reopen() {
     this.close();
     await this.open();
+  }
+
+  /** Shows other namespaces; the current rows stay until the new ones arrive. */
+  async setNamespaces(namespaces: string[]) {
+    this.spec = { ...this.spec, namespaces };
+    await this.reopen();
   }
 
   apply(batch: RowBatch) {
