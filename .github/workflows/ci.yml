@@ -82,6 +82,7 @@ jobs:
       versioned-asset-names: false
       # Stamp the tag's version into the build assets before packaging.
       package-command: bash hack/set-version.sh && wails3 task package
+      # Windows: the runner image lacks NSIS (makensis), needed for the installer.
       # macOS: one universal (arm64 + amd64) app built on Apple Silicon, so
       # Intel Macs are covered without a separate (slow) Intel runner. The
       # .app is re-bundled after stamping so Info.plist has the version.
@@ -90,6 +91,7 @@ jobs:
           {"runner": "ubuntu-latest",
            "package-files": "bin/*.AppImage\nbin/*.deb\nbin/*.rpm"},
           {"runner": "windows-latest",
+           "package-command": "bash hack/set-version.sh && choco install nsis -y --no-progress && PATH=\"/c/Program Files (x86)/NSIS:$PATH\" wails3 task package",
            "package-files": "bin/*-installer.exe"},
           {"runner": "macos-latest", "arch": "universal",
            "build-command": "wails3 task darwin:package:universal",
