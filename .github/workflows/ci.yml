@@ -1,8 +1,13 @@
 name: CI
 
+# Thin caller: the jobs live in bhatnagar-afk-dev/build-publisher.
+# PRs and pushes to main lint, test and build; pushing a `v*` tag also
+# publishes the build archives to a GitHub Release.
+
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
 
 permissions:
@@ -12,125 +17,67 @@ concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
 
-env:
-  WAILS_VERSION: v3.0.0
-
 jobs:
-  # Decides whether anything besides docs changed. The other jobs are skipped
-  # (which counts as passing for required checks) when only docs changed.
+  # The other jobs are skipped (which counts as passing for required checks)
+  # when only docs changed.
   changes:
-    name: Detect changes
-    runs-on: ubuntu-latest
-    outputs:
-      code: ${{ steps.diff.outputs.code }}
-    steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - id: diff
-        name: Check for non-docs changes
-        env:
-          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
-        run: |
-          # No usable base (new branch, force push): run everything.
-          if [ -z "$BASE" ] || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
-            echo "code=true" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          code=false
-          while IFS= read -r f; do
-            case "$f" in
-              ""|docs/*|*.md|LICENSE|.github/ISSUE_TEMPLATE/*|.github/CODEOWNERS) ;;
-              *) echo "Code change: $f"; code=true ;;
-            esac
-          done <<< "$(git diff --name-only "$BASE" "$GITHUB_SHA")"
-          echo "code=$code" >> "$GITHUB_OUTPUT"
-          [ "$code" = true ] || echo "Only docs changed; skipping lint, tests and builds."
+    uses: bhatnagar-afk-dev/build-publisher/.github/workflows/detect-changes.yml@v1
+    with:
+      ignore-patterns: |
+        docs/*
+        *.md
+        LICENSE
+        .github/ISSUE_TEMPLATE/*
+        .github/CODEOWNERS
 
   lint-test:
-    name: Lint & test
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - name: Install Linux webview deps
-        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
-      - name: Install frontend deps
-        run: npm ci --prefix frontend
+    uses: bhatnagar-afk-dev/build-publisher/.github/workflows/go-ci.yml@v1
+    with:
+      node-version: "22"
+      node-cache-dependency-path: frontend/package-lock.json
+      apt-packages: libgtk-4-dev libwebkitgtk-6.0-dev
+      go-tools: &wails3 github.com/wailsapp/wails/v3/cmd/wails3@v3.0.0
       # main.go embeds frontend/dist, so it must exist before vet/lint/test.
-      - name: Build frontend
-        run: npm run build --prefix frontend
-      - name: golangci-lint
-        uses: golangci/golangci-lint-action@v9
-        with:
-          version: latest
-      - name: Go tests
-        run: go test -race -coverprofile=coverage.out ./...
-      - name: Frontend type-check
-        run: npm run check --prefix frontend
-      - name: Check bindings are up to date
-        run: |
-          go install github.com/wailsapp/wails/v3/cmd/wails3@${WAILS_VERSION}
-          wails3 generate bindings -clean=true -ts -i
-          git diff --exit-code -- frontend/bindings || {
-            echo "::error::frontend/bindings is stale. Run 'wails3 generate bindings -ts -i' and commit."
-            exit 1
-          }
+      pre-commands: |
+        npm ci --prefix frontend
+        npm run build --prefix frontend
+      test-command: go test -race -coverprofile=coverage.out ./...
+      post-commands: |
+        npm run check --prefix frontend
+        wails3 generate bindings -clean=true -ts -i
+        git diff --exit-code -- frontend/bindings || {
+          echo "::error::frontend/bindings is stale. Run 'wails3 generate bindings -ts -i' and commit."
+          exit 1
+        }
 
   integration:
-    name: Integration (kind)
     needs: changes
     if: needs.changes.outputs.code == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - uses: helm/kind-action@v1
-        with:
-          cluster_name: kuberoot
-      - name: Integration tests
-        run: go test -race -tags integration -run Integration -v ./internal/...
-        env:
-          KUBEROOT_IT_CONTEXT: kind-kuberoot
+    uses: bhatnagar-afk-dev/build-publisher/.github/workflows/kind-integration.yml@v1
+    with:
+      cluster-name: kuberoot
+      test-command: KUBEROOT_IT_CONTEXT=kind-kuberoot go test -race -tags integration -run Integration -v ./internal/...
 
   build:
-    name: Build (${{ matrix.os }})
     needs: lint-test
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [macos-latest, windows-latest, ubuntu-latest]
-    runs-on: ${{ matrix.os }}
-    steps:
-      - uses: actions/checkout@v7
-      - uses: actions/setup-go@v7
-        with:
-          go-version-file: go.mod
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - name: Install Linux webview deps
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y libgtk-4-dev libwebkitgtk-6.0-dev
-      - name: Install Wails CLI
-        run: go install github.com/wailsapp/wails/v3/cmd/wails3@${{ env.WAILS_VERSION }}
-      - name: Build
-        run: wails3 build
-      - uses: actions/upload-artifact@v7
-        with:
-          name: kuberoot-${{ runner.os }}
-          path: bin/
-          retention-days: 7
+    uses: bhatnagar-afk-dev/build-publisher/.github/workflows/build-native-app.yml@v1
+    with:
+      artifact-name: kuberoot
+      artifact-path: bin/
+      build-command: wails3 build
+      archive: ${{ github.ref_type == 'tag' }}
+      node-version: "22"
+      node-cache-dependency-path: frontend/package-lock.json
+      apt-packages: libgtk-4-dev libwebkitgtk-6.0-dev
+      go-tools: *wails3
+
+  release:
+    needs: [build, integration]
+    if: github.ref_type == 'tag'
+    permissions:
+      contents: write
+    uses: bhatnagar-afk-dev/build-publisher/.github/workflows/release-github.yml@v1
+    with:
+      artifact-name: kuberoot
