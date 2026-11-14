@@ -261,9 +261,12 @@ connection's own `ctx`, so everything started for a cluster stops when it discon
 - **YAML:** `object.Reader` GETs the full object with the dynamic client and renders it with
   `sigs.k8s.io/yaml`. `managedFields` are hidden by default (toggle). See
   [Security](#security-and-rbac) for Secrets.
-- **Events tab:** a view on `core/v1` events in the object's namespace with field selector
-  `involvedObject.uid=<uid>` (what `kubectl describe` uses; works on every supported server
-  version). Same table pipeline, so it is live.
+- **Events tab:** a view on `core/v1` events in the object's namespace (all namespaces for
+  cluster-scoped objects), selected the way `kubectl describe` selects them: field selector
+  `involvedObject.name`, `involvedObject.namespace` and `involvedObject.uid`. Node events are
+  selected by `involvedObject.kind=Node` instead of UID, because the kubelet records them with
+  the node's name as UID. Terms are sorted, so one object always maps to one informer. Same
+  table pipeline (informer keys gain a field selector), so it is live.
 - The **Events** navigation entry is an ordinary resource view on `events`.
 
 ### Go<->UI contract
@@ -329,6 +332,12 @@ type ObjectRef struct {
     Type      ResourceType `json:"type"`
     Namespace string       `json:"namespace"`
     Name      string       `json:"name"`
+    UID       string       `json:"uid"` // selects the object's events
+}
+
+type YAMLOptions struct {
+    ManagedFields bool `json:"managedFields"` // keep metadata.managedFields
+    RevealSecrets bool `json:"revealSecrets"` // show Secret values instead of their sizes
 }
 
 type Column struct {
@@ -363,11 +372,15 @@ rows are the last known ones.
 Under `frontend/src/lib/resources/`:
 
 - `Nav.svelte` renders `NavGroup[]` generically, with no section names in the UI.
-- `ResourceTable.svelte` is a fixed-row-height virtualized table written in-house (no new
-  dependency), with sort by column type and text filter over name, namespace and cells.
+- `ResourceTable.svelte` is the toolbar, text filter (over name, namespace and cells) and
+  detail panel around `RowGrid.svelte`, a fixed-row-height virtualized grid written in-house
+  (no new dependency) with sort by column type and ↑/↓ selection. The Events tab reuses it.
 - `NamespacePicker.svelte` is a multi-select with search, plus "All namespaces".
-- `DetailPanel.svelte` has the Describe, YAML and Events tabs. Describe and YAML are rendered
-  by small components behind a common props shape, so a structured describe view can drop in.
+- `DetailPanel.svelte` has the Describe, YAML and Events tabs. Each tab is a component in
+  `resources/detail/` taking `DetailTabProps{ref, resourceVersion, live}`, so a structured
+  describe view can replace `DescribeTab.svelte` without touching the panel. The panel is
+  resizable, keeps the chosen tab across objects, closes with Esc, and shows the last known
+  state once the object is deleted.
 - **Code editor, one point of change.** All code/text display goes through
   `frontend/src/lib/editor/`. The rest of the app imports only `CodeEditor.svelte` from
   there, never an editor library:
@@ -412,8 +425,8 @@ The "resource browser arrives in M2" placeholder in `ContextDetail.svelte` is re
   5k pods ≈ 10 MB).
 - UI: batched events, chunked resets, virtualized rendering. Target: 5,000 rows scroll at
   60 fps and a burst of 1,000 changes applies in under 100ms.
-- Binary size: `k8s.io/kubectl` adds an estimated 10–15 MB. This will be measured in the
-  describe PR and recorded here.
+- Binary size: `k8s.io/kubectl` adds 9.5 MB (stripped darwin/arm64 build: 47.8 MB → 57.2 MB).
+  CodeMirror is a lazily loaded chunk (117 KB gzipped) outside the startup bundle.
 
 ## Test plan
 
@@ -462,3 +475,12 @@ The "resource browser arrives in M2" placeholder in `ContextDetail.svelte` is re
    - **A plain highlighter** (highlight.js, Prism): lightest, but cannot become an editor.
 3. **Idle timeout and informer limit:** 60s idle timeout and at most 30 informers per cluster,
    as constants.
+
+## Follow-ups
+
+1. **Pods of a workload** (moved to M3): the detail panel of a Deployment, StatefulSet,
+   DaemonSet, ReplicaSet or Job doesn't list its pods yet (`kubectl describe` shows only the
+   ReplicaSets). M3 needs the same pod lookup to show logs for a whole workload, so the M3
+   proposal designs both together: a **Pods** tab that lists pods by the workload's
+   `spec.selector`, using a label selector on informer keys next to the field selector the
+   Events tab added.
