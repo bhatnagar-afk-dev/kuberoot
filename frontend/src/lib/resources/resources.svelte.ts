@@ -1,10 +1,12 @@
 // Reactive state for live resource views. Rows come from ResourceService as
 // batched events; this module only mirrors them.
 import { Events } from '@wailsio/runtime';
+import { untrack } from 'svelte';
 import { ResourceService } from '../../../bindings/kuberoot.in/kuberoot/app';
 import { ViewPhase } from '../../../bindings/kuberoot.in/kuberoot/internal/resources';
 import type {
   Column,
+  ObjectRef,
   ResourceType,
   Row,
   RowBatch,
@@ -12,12 +14,16 @@ import type {
 } from '../../../bindings/kuberoot.in/kuberoot/internal/resources';
 import { applyBatch } from './rows';
 
-export type { Column, ResourceType, Row, ViewStatus };
+export type { Column, ObjectRef, ResourceType, Row, ViewStatus };
 export { ViewPhase };
 
 const views = new Map<string, ResourceView>();
 let listening = false;
 let seq = 0;
+// View IDs must be unique per app session. The backend outlives a page load
+// (a webview reload, or a browser tab in server mode), so IDs are prefixed
+// per load.
+const idPrefix = Math.random().toString(36).slice(2, 10);
 
 function listen() {
   if (listening) return;
@@ -56,17 +62,22 @@ export class ResourceView {
   /** Starts the view. Rows from an earlier session stay until the new reset. */
   async open() {
     listen();
-    this.id = `view-${++seq}`;
+    this.id = `view-${idPrefix}-${++seq}`;
     views.set(this.id, this);
     this.status = { viewId: this.id, phase: ViewPhase.ViewLoading };
     const id = this.id;
     try {
-      await ResourceService.Open({ viewId: id, ...this.spec });
+      await this.start(id);
     } catch (e) {
       if (this.id === id) {
         this.status = { viewId: id, phase: ViewPhase.ViewError, message: errorMessage(e) };
       }
     }
+  }
+
+  /** Asks the backend to start view id. */
+  protected start(id: string): Promise<void> {
+    return ResourceService.Open({ viewId: id, ...this.spec });
   }
 
   close() {
@@ -103,6 +114,42 @@ export class ResourceView {
   setStatus(s: ViewStatus) {
     this.status = s;
   }
+}
+
+/** core/v1 events, as listed by the Events tab. */
+const eventsType: ResourceType = { group: '', version: 'v1', resource: 'events', kind: 'Event', namespaced: true };
+
+/** The live events about one object, like the Events section of `kubectl describe`. */
+export class EventsView extends ResourceView {
+  private ref: ObjectRef;
+
+  constructor(ref: ObjectRef) {
+    super({
+      contextId: ref.contextId,
+      type: eventsType,
+      namespaces: ref.type.namespaced && ref.namespace ? [ref.namespace] : [],
+    });
+    this.ref = ref;
+  }
+
+  protected override start(id: string): Promise<void> {
+    return ResourceService.OpenEvents(id, this.ref);
+  }
+}
+
+/**
+ * Reopens view whenever connected() turns true again: views die with the
+ * connection they were opened on. Call during component initialisation.
+ */
+export function reopenOnReconnect(view: ResourceView, connected: () => boolean) {
+  let was = untrack(connected);
+  $effect(() => {
+    const now = connected();
+    untrack(() => {
+      if (now && !was) void view.reopen();
+      was = now;
+    });
+  });
 }
 
 /** Current time for Age columns, updated every few seconds while used. */

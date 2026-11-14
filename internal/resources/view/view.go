@@ -40,6 +40,8 @@ type Request struct {
 	ViewID     string
 	Type       resources.ResourceType
 	Namespaces []string // empty means all namespaces; ignored for cluster-scoped types
+	// FieldSelector, if set, limits the rows (e.g. the events of one object).
+	FieldSelector string
 }
 
 // Options tunes a View. Zero values select defaults.
@@ -125,7 +127,7 @@ func Open(s cluster.Session, subs Subscriber, req Request, sink resources.Sink, 
 // it to the requested namespaces). Otherwise it returns one key per
 // namespace.
 func plan(contextID string, req Request, subs Subscriber) (keys []cache.Key, filter map[string]bool) {
-	all := cache.Key{ContextID: contextID, GVR: req.Type.GVR()}
+	all := cache.Key{ContextID: contextID, GVR: req.Type.GVR(), FieldSelector: req.FieldSelector}
 	namespaces := slices.Compact(slices.Sorted(slices.Values(req.Namespaces)))
 	if !req.Type.Namespaced || len(namespaces) == 0 {
 		return []cache.Key{all}, nil

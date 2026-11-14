@@ -83,6 +83,20 @@ func TestNavigationNotConnected(t *testing.T) {
 	}
 }
 
+func TestObjectDetailsNotConnected(t *testing.T) {
+	s := newTestResourceService(t)
+	ref := resources.ObjectRef{ContextID: s.clusters.store.Contexts()[0].ID, Type: podsType, Namespace: "default", Name: "p1", UID: "u1"}
+	if _, err := s.Describe(ref); err == nil || err.Error() != cluster.ErrNotConnected.Error() {
+		t.Errorf("Describe err = %v, want %v", err, cluster.ErrNotConnected)
+	}
+	if _, err := s.YAML(ref, resources.YAMLOptions{}); err == nil || err.Error() != cluster.ErrNotConnected.Error() {
+		t.Errorf("YAML err = %v, want %v", err, cluster.ErrNotConnected)
+	}
+	if err := s.OpenEvents("e1", ref); err == nil || err.Error() != cluster.ErrNotConnected.Error() {
+		t.Errorf("OpenEvents err = %v, want %v", err, cluster.ErrNotConnected)
+	}
+}
+
 func TestSavedNamespaces(t *testing.T) {
 	s := newTestResourceService(t)
 	if got := s.SavedNamespaces("c1"); got == nil || len(got) != 0 {

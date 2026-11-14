@@ -78,7 +78,7 @@ func (f *fakeServer) lastRequest() *http.Request {
 
 func newTestSource(t *testing.T, srv *fakeServer, gvr schema.GroupVersionResource, ns string) *Source {
 	t.Helper()
-	s, err := NewSource(&rest.Config{Host: srv.URL}, gvr, ns)
+	s, err := NewSource(&rest.Config{Host: srv.URL}, gvr, ns, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,10 +146,38 @@ func TestPaths(t *testing.T) {
 	}
 }
 
+func TestFieldSelector(t *testing.T) {
+	srv := newFakeServer(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Query().Get("watch") == "true" {
+			return // an empty watch stream
+		}
+		fmt.Fprint(w, tableJSON("10", true))
+	})
+	s, err := NewSource(&rest.Config{Host: srv.URL}, podsGVR, "web", "involvedObject.uid=u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// The reflector's options must not replace the source's selector.
+	if _, err := s.ListWithContext(context.Background(), metav1.ListOptions{FieldSelector: "other=x"}); err != nil {
+		t.Fatal(err)
+	}
+	if got := srv.lastRequest().URL.Query().Get("fieldSelector"); got != "involvedObject.uid=u1" {
+		t.Errorf("list fieldSelector = %q", got)
+	}
+	w, err := s.WatchWithContext(context.Background(), metav1.ListOptions{ResourceVersion: "10"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Stop()
+	if got := srv.lastRequest().URL.Query().Get("fieldSelector"); got != "involvedObject.uid=u1" {
+		t.Errorf("watch fieldSelector = %q", got)
+	}
+}
+
 func TestServerPathPrefix(t *testing.T) {
 	srv := newFakeServer(t, func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, tableJSON("1", true)) })
 	// Proxied clusters (e.g. Rancher) put the API under a path prefix.
-	s, err := NewSource(&rest.Config{Host: srv.URL + "/k8s/clusters/c-1"}, podsGVR, "")
+	s, err := NewSource(&rest.Config{Host: srv.URL + "/k8s/clusters/c-1"}, podsGVR, "", "")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -41,6 +41,18 @@ func New(conns resources.Connections, subs view.Subscriber, sinks SinkFactory, o
 
 // Open starts a view. Its rows and status go to the sink for req.ViewID.
 func (b *Browser) Open(req resources.ViewRequest) error {
+	return b.start(req, view.Request{ViewID: req.ViewID, Type: req.Type, Namespaces: req.Namespaces})
+}
+
+// OpenEvents starts a view of the events about one object, like the Events
+// section of `kubectl describe`. Its rows go to the sink for viewID.
+func (b *Browser) OpenEvents(viewID string, ref resources.ObjectRef) error {
+	vr := EventsRequest(viewID, ref)
+	return b.start(resources.ViewRequest{ViewID: viewID, ContextID: ref.ContextID, Type: vr.Type, Namespaces: vr.Namespaces}, vr)
+}
+
+// start opens the view vr; req describes it to the sink factory.
+func (b *Browser) start(req resources.ViewRequest, vr view.Request) error {
 	if req.ViewID == "" {
 		return errors.New("view ID is empty")
 	}
@@ -58,7 +70,7 @@ func (b *Browser) Open(req resources.ViewRequest) error {
 	b.pending[req.ViewID] = false // reserve the ID without holding the lock while opening
 	b.mu.Unlock()
 
-	v, err := b.open(req)
+	v, err := b.open(req, vr)
 
 	b.mu.Lock()
 	closed := b.closed
@@ -78,16 +90,12 @@ func (b *Browser) Open(req resources.ViewRequest) error {
 	return err
 }
 
-func (b *Browser) open(req resources.ViewRequest) (*view.View, error) {
+func (b *Browser) open(req resources.ViewRequest, vr view.Request) (*view.View, error) {
 	s, err := b.conns.Session(req.ContextID)
 	if err != nil {
 		return nil, errors.New(redact.String(err.Error()))
 	}
-	v, err := view.Open(s, b.subs, view.Request{
-		ViewID:     req.ViewID,
-		Type:       req.Type,
-		Namespaces: req.Namespaces,
-	}, b.sinks(req), b.opts)
+	v, err := view.Open(s, b.subs, vr, b.sinks(req), b.opts)
 	if err != nil {
 		return nil, fmt.Errorf("open %s: %s", req.Type.Resource, redact.String(err.Error()))
 	}

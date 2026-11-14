@@ -12,7 +12,9 @@ import (
 	"kuberoot.in/kuberoot/internal/resources/browser"
 	"kuberoot.in/kuberoot/internal/resources/cache"
 	"kuberoot.in/kuberoot/internal/resources/catalog"
+	"kuberoot.in/kuberoot/internal/resources/describe/kubectl"
 	"kuberoot.in/kuberoot/internal/resources/nav/curated"
+	"kuberoot.in/kuberoot/internal/resources/object"
 	"kuberoot.in/kuberoot/internal/resources/view"
 	"kuberoot.in/kuberoot/internal/settings"
 )
@@ -30,9 +32,9 @@ func init() {
 	application.RegisterEvent[resources.NavStale](EventNavStale)
 }
 
-// ResourceService exposes the navigation and live resource tables of
-// connected clusters to the UI. Rows and status changes arrive as events for
-// the view ID the UI chose.
+// ResourceService exposes the navigation, live resource tables and object
+// details of connected clusters to the UI. Rows and status changes arrive as
+// events for the view ID the UI chose.
 type ResourceService struct {
 	clusters *ClusterService
 	emit     func(name string, data any)
@@ -40,6 +42,7 @@ type ResourceService struct {
 	informers *cache.Informers
 	browser   *browser.Browser
 	catalogs  *browser.Catalogs
+	objects   *browser.Objects
 }
 
 // NewResourceService returns a service browsing the clusters connected
@@ -48,7 +51,8 @@ func NewResourceService(clusters *ClusterService) *ResourceService {
 	return &ResourceService{clusters: clusters, emit: clusters.emit}
 }
 
-// ServiceStartup creates the informer cache, the browser and the catalogs.
+// ServiceStartup creates the informer cache, the browser, the catalogs and
+// the object renderers.
 func (s *ResourceService) ServiceStartup(context.Context, application.ServiceOptions) error {
 	s.start()
 	return nil
@@ -60,6 +64,7 @@ func (s *ResourceService) start() {
 	s.catalogs = browser.NewCatalogs(sessions{s.clusters}, newCatalog, curated.Navigator{}, func(id string) {
 		s.emit(EventNavStale, resources.NavStale{ContextID: id})
 	}, browser.CatalogOptions{})
+	s.objects = browser.NewObjects(sessions{s.clusters}, kubectl.Describer{}, object.Reader{})
 }
 
 func newCatalog(s cluster.Session) (resources.Catalog, error) { return catalog.New(s) }
@@ -87,6 +92,23 @@ func (s *ResourceService) Open(req resources.ViewRequest) error {
 // Close stops a view.
 func (s *ResourceService) Close(viewID string) {
 	s.browser.Close(viewID)
+}
+
+// OpenEvents starts a live view of the events about one object. viewID is
+// chosen by the UI as for Open.
+func (s *ResourceService) OpenEvents(viewID string, ref resources.ObjectRef) error {
+	return s.browser.OpenEvents(viewID, ref)
+}
+
+// Describe returns `kubectl describe` output for one object.
+func (s *ResourceService) Describe(ref resources.ObjectRef) (string, error) {
+	return s.objects.Describe(ref)
+}
+
+// YAML returns one object as YAML. Secret values are hidden unless
+// opts.RevealSecrets is set.
+func (s *ResourceService) YAML(ref resources.ObjectRef, opts resources.YAMLOptions) (string, error) {
+	return s.objects.YAML(ref, opts)
 }
 
 // Navigation returns the navigation tree of a connected cluster. If its

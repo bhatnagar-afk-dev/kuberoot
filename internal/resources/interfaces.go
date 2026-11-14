@@ -38,6 +38,17 @@ type Navigator interface {
 	Navigation(types []ResourceType) []NavGroup
 }
 
+// Describer produces human-readable describe output for one object, like
+// `kubectl describe`.
+type Describer interface {
+	Describe(ctx context.Context, s cluster.Session, ref ObjectRef) (string, error)
+}
+
+// ObjectReader fetches one object and renders it for display.
+type ObjectReader interface {
+	YAML(ctx context.Context, s cluster.Session, ref ObjectRef, opts YAMLOptions) (string, error)
+}
+
 // PartialDiscoveryError reports API group versions whose resource types could
 // not be read.
 type PartialDiscoveryError struct {
