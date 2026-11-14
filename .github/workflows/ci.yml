@@ -67,11 +67,12 @@ jobs:
       artifact-name: kuberoot
       artifact-path: bin/
       build-command: wails3 build
-      # One universal (arm64 + amd64) macOS binary built on Apple Silicon, so
-      # Intel Macs are covered without a separate (slow) Intel runner.
+      # One universal (arm64 + amd64) kuberoot.app built on Apple Silicon, so
+      # Intel Macs are covered without a separate (slow) Intel runner. The bare
+      # binary is removed so the archive contains only the .app bundle.
       runner-overrides: |
         [{"runner": "macos-latest", "arch": "universal",
-          "build-command": "wails3 task darwin:build:universal"}]
+          "build-command": "wails3 task darwin:package:universal && rm bin/kuberoot"}]
       archive: ${{ github.ref_type == 'tag' }}
       node-version: "22"
       node-cache-dependency-path: frontend/package-lock.json
