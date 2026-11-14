@@ -32,6 +32,23 @@ type ViewRequest struct {
 	Namespaces []string     `json:"namespaces"` // empty means all namespaces
 }
 
+// ObjectRef identifies one object for the detail panel.
+type ObjectRef struct {
+	ContextID string       `json:"contextId"`
+	Type      ResourceType `json:"type"`
+	Namespace string       `json:"namespace,omitempty"`
+	Name      string       `json:"name"`
+	// UID selects the object's events (OpenEvents); Describe and YAML
+	// ignore it.
+	UID string `json:"uid,omitempty"`
+}
+
+// YAMLOptions controls how an object is rendered as YAML.
+type YAMLOptions struct {
+	ManagedFields bool `json:"managedFields"` // keep metadata.managedFields
+	RevealSecrets bool `json:"revealSecrets"` // show Secret values instead of their sizes
+}
+
 // Column describes one table column, as reported by the server (the same
 // columns `kubectl get` prints).
 type Column struct {

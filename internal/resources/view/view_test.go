@@ -264,6 +264,19 @@ func TestReusesRunningClusterWideInformer(t *testing.T) {
 	}
 }
 
+func TestFieldSelector(t *testing.T) {
+	subs := newFakeSubscriber()
+	// A running unfiltered informer can't serve a filtered view.
+	subs.running[cache.Key{ContextID: "c1", GVR: pods.GVR()}] = true
+	open(t, Request{Type: pods, Namespaces: []string{"web"}, FieldSelector: "spec.nodeName=n1"}, subs, Options{})
+	want := cache.Key{ContextID: "c1", GVR: pods.GVR(), Namespace: "web", FieldSelector: "spec.nodeName=n1"}
+	subs.mu.Lock()
+	defer subs.mu.Unlock()
+	if _, ok := subs.handlers[want]; !ok || len(subs.handlers) != 1 {
+		t.Errorf("subscribed = %v, want only %v", subs.handlers, want)
+	}
+}
+
 func TestClusterScopedIgnoresNamespaces(t *testing.T) {
 	subs := newFakeSubscriber()
 	nodes := resources.ResourceType{Version: "v1", Resource: "nodes", Kind: "Node"}

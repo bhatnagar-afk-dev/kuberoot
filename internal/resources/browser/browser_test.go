@@ -3,6 +3,7 @@ package browser
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -33,6 +34,7 @@ func (f fakeConns) Session(id string) (cluster.Session, error) {
 type fakeSubscriber struct {
 	mu     sync.Mutex
 	open   int
+	keys   []cache.Key
 	gate   chan struct{} // if set, Subscribe waits for it
 	failOn string
 }
@@ -47,6 +49,7 @@ func (f *fakeSubscriber) Subscribe(_ cluster.Session, k cache.Key, _ cache.Handl
 		return nil, errors.New("boom token=abcdef123456")
 	}
 	f.open++
+	f.keys = append(f.keys, k)
 	return sub{f}, nil
 }
 
@@ -102,6 +105,62 @@ func TestOpenAndClose(t *testing.T) {
 	// The ID is free again.
 	if err := b.Open(req("v1")); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestOpenEvents(t *testing.T) {
+	subs := &fakeSubscriber{}
+	var sinkReq resources.ViewRequest
+	b := New(fakeConns{ctx: t.Context()}, subs, func(r resources.ViewRequest) resources.Sink { sinkReq = r; return nopSink{} },
+		view.Options{Clock: clocktesting.NewFakeClock(time.Now())})
+	t.Cleanup(b.CloseAll)
+
+	ref := resources.ObjectRef{ContextID: "c1", Type: pods, Namespace: "web", Name: "p1", UID: "u1"}
+	if err := b.OpenEvents("e1", ref); err != nil {
+		t.Fatal(err)
+	}
+	want := cache.Key{ContextID: "c1", GVR: EventsType.GVR(), Namespace: "web",
+		FieldSelector: "involvedObject.name=p1,involvedObject.namespace=web,involvedObject.uid=u1"}
+	if len(subs.keys) != 1 || subs.keys[0] != want {
+		t.Errorf("subscribed = %+v, want %+v", subs.keys, want)
+	}
+	if sinkReq.ViewID != "e1" || sinkReq.ContextID != "c1" || sinkReq.Type != EventsType {
+		t.Errorf("sink request = %+v", sinkReq)
+	}
+	if err := b.OpenEvents("e1", ref); err == nil {
+		t.Error("duplicate events view ID accepted")
+	}
+	b.Close("e1")
+	if subs.count() != 0 {
+		t.Error("events view not closed")
+	}
+}
+
+func TestEventsRequest(t *testing.T) {
+	nodes := resources.ResourceType{Version: "v1", Resource: "nodes", Kind: "Node"}
+	pvs := resources.ResourceType{Version: "v1", Resource: "persistentvolumes", Kind: "PersistentVolume"}
+	tests := []struct {
+		name       string
+		ref        resources.ObjectRef
+		namespaces []string
+		selector   string
+	}{
+		{"namespaced", resources.ObjectRef{Type: pods, Namespace: "web", Name: "p1", UID: "u1"},
+			[]string{"web"}, "involvedObject.name=p1,involvedObject.namespace=web,involvedObject.uid=u1"},
+		{"no UID", resources.ObjectRef{Type: pods, Namespace: "web", Name: "p1"},
+			[]string{"web"}, "involvedObject.name=p1,involvedObject.namespace=web"},
+		{"cluster-scoped", resources.ObjectRef{Type: pvs, Name: "pv1", UID: "u2"},
+			nil, "involvedObject.name=pv1,involvedObject.namespace=,involvedObject.uid=u2"},
+		{"node by kind", resources.ObjectRef{Type: nodes, Name: "n1", UID: "u3"},
+			nil, "involvedObject.kind=Node,involvedObject.name=n1,involvedObject.namespace="},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r := EventsRequest("v", tt.ref)
+			if r.ViewID != "v" || r.Type != EventsType || !slices.Equal(r.Namespaces, tt.namespaces) || r.FieldSelector != tt.selector {
+				t.Errorf("request = %+v, want namespaces %v and selector %q", r, tt.namespaces, tt.selector)
+			}
+		})
 	}
 }
 
