@@ -62,11 +62,13 @@ jobs:
 
   build:
     needs: lint-test
-    uses: bhatnagar-afk-dev/build-publisher/.github/workflows/build-native-app.yml@v1
+    uses: bhatnagar-afk-dev/build-publisher/.github/workflows/build-native-app.yml@feat/artifact-name-arch
     with:
       artifact-name: kuberoot
       artifact-path: bin/
       build-command: wails3 build
+      # macos-latest is Apple Silicon; macos-15-intel adds the amd64 build.
+      runners: '["ubuntu-latest", "macos-latest", "macos-15-intel", "windows-latest"]'
       archive: ${{ github.ref_type == 'tag' }}
       node-version: "22"
       node-cache-dependency-path: frontend/package-lock.json
