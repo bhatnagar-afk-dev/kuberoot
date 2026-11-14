@@ -11,6 +11,11 @@
   --dot-off: #b4bac4;
   --hover: #eef0f3;
   --selected: #e3ebfc;
+  --syn-key: #1f5fbf;
+  --syn-string: #2f7d32;
+  --syn-literal: #a64d00;
+  --syn-keyword: #8a3ab9;
+  --syn-match: #fde68a;
   --radius: 8px;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   font-size: 14px;
@@ -32,6 +37,11 @@
     --dot-off: #4a505c;
     --hover: #232731;
     --selected: #24304a;
+    --syn-key: #7fb0ff;
+    --syn-string: #8fd18f;
+    --syn-literal: #f0a86b;
+    --syn-keyword: #d19bf0;
+    --syn-match: #5a4a12;
   }
 }
 

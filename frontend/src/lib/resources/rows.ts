@@ -44,25 +44,32 @@ export function cellText(v: unknown): string {
 export type DisplayColumn =
   | { kind: 'namespace'; name: string }
   | { kind: 'age'; name: string; index: number }
-  | { kind: 'cell'; name: string; index: number; type: string };
+  | { kind: 'cell'; name: string; index: number; type: string; isName: boolean };
 
 /**
  * Picks the columns to show: priority-0 server columns, with Namespace
- * inserted after the name column when withNamespace is set. Age columns are
- * computed from the creation time so they stay current.
+ * inserted first when withNamespace is set. Age columns are computed from the
+ * creation time so they stay current.
  */
 export function displayColumns(columns: Column[], withNamespace: boolean): DisplayColumn[] {
   const out: DisplayColumn[] = [];
+  const name = nameIndex(columns);
   columns.forEach((c, index) => {
     if (c.priority > 0) return;
     if (c.type === 'date' && c.name.toLowerCase() === 'age') {
       out.push({ kind: 'age', name: c.name, index });
     } else {
-      out.push({ kind: 'cell', name: c.name, index, type: c.type });
+      out.push({ kind: 'cell', name: c.name, index, type: c.type, isName: index === name });
     }
   });
   if (withNamespace) out.unshift({ kind: 'namespace', name: 'Namespace' });
   return out;
+}
+
+/** The index of the object-name column, or -1. */
+function nameIndex(columns: Column[]): number {
+  const i = columns.findIndex((c) => c.format === 'name');
+  return i >= 0 ? i : columns.findIndex((c) => c.name.toLowerCase() === 'name');
 }
 
 export function displayText(col: DisplayColumn, row: Row, now: number): string {
@@ -83,8 +90,17 @@ export function compareDefault(a: Row, b: Row): number {
   return collator.compare(a.namespace ?? '', b.namespace ?? '') || collator.compare(a.name, b.name);
 }
 
+/** Newest first, e.g. for events. */
+export function compareNewest(a: Row, b: Row): number {
+  return Date.parse(b.created) - Date.parse(a.created) || compareDefault(a, b);
+}
+
 /** Returns a comparator for col, falling back to the default order on ties. */
-export function comparator(col: DisplayColumn, desc: boolean): (a: Row, b: Row) => number {
+export function comparator(
+  col: DisplayColumn,
+  desc: boolean,
+  tieBreak: (a: Row, b: Row) => number = compareDefault,
+): (a: Row, b: Row) => number {
   const dir = desc ? -1 : 1;
   let cmp: (a: Row, b: Row) => number;
   switch (col.kind) {
@@ -104,7 +120,7 @@ export function comparator(col: DisplayColumn, desc: boolean): (a: Row, b: Row) 
       }
     }
   }
-  return (a, b) => dir * cmp(a, b) || compareDefault(a, b);
+  return (a, b) => dir * cmp(a, b) || tieBreak(a, b);
 }
 
 function num(v: unknown): number {
