@@ -62,7 +62,7 @@ jobs:
 
   build:
     needs: lint-test
-    uses: bhatnagar-afk-dev/build-publisher/.github/workflows/build-native-app.yml@feat/runner-overrides
+    uses: bhatnagar-afk-dev/build-publisher/.github/workflows/build-native-app.yml@v1
     with:
       artifact-name: kuberoot
       artifact-path: bin/
