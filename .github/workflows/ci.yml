@@ -9,6 +9,9 @@ on:
     branches: [main]
     tags: ["v*"]
   pull_request:
+  # Manual dry run: builds and packages the installers as artifacts, without
+  # publishing a release.
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -62,22 +65,37 @@ jobs:
 
   build:
     needs: lint-test
-    uses: bhatnagar-afk-dev/build-publisher/.github/workflows/build-native-app.yml@v1
+    uses: bhatnagar-afk-dev/build-publisher/.github/workflows/build-native-app.yml@feat/release-packaging
     with:
       artifact-name: kuberoot
       artifact-path: bin/
       build-command: wails3 build
-      # One universal (arm64 + amd64) kuberoot.app built on Apple Silicon, so
-      # Intel Macs are covered without a separate (slow) Intel runner. The bare
-      # binary is removed so the archive contains only the .app bundle.
-      runner-overrides: |
-        [{"runner": "macos-latest", "arch": "universal",
-          "build-command": "wails3 task darwin:package:universal && rm bin/kuberoot"}]
-      archive: ${{ github.ref_type == 'tag' }}
       node-version: "22"
       node-cache-dependency-path: frontend/package-lock.json
       apt-packages: libgtk-4-dev libwebkitgtk-6.0-dev
       go-tools: *wails3
+      # Installers are built only for tags (published by `release`) and manual
+      # dry runs, so PR and main CI stay fast. Asset names carry no version, so
+      # releases/latest/download/<asset> links keep working across releases.
+      release: ${{ github.ref_type == 'tag' || github.event_name == 'workflow_dispatch' }}
+      release-archive: false
+      versioned-asset-names: false
+      # Stamp the tag's version into the build assets before packaging.
+      package-command: bash hack/set-version.sh && wails3 task package
+      # macOS: one universal (arm64 + amd64) app built on Apple Silicon, so
+      # Intel Macs are covered without a separate (slow) Intel runner. The
+      # .app is re-bundled after stamping so Info.plist has the version.
+      runner-overrides: |
+        [
+          {"runner": "ubuntu-latest",
+           "package-files": "bin/*.AppImage\nbin/*.deb\nbin/*.rpm"},
+          {"runner": "windows-latest",
+           "package-files": "bin/*-installer.exe"},
+          {"runner": "macos-latest", "arch": "universal",
+           "build-command": "wails3 task darwin:package:universal",
+           "package-command": "bash hack/set-version.sh && wails3 task darwin:create:app:bundle && wails3 task darwin:create:dmg",
+           "package-files": "bin/*.dmg"}
+        ]
 
   release:
     needs: [build, integration]
