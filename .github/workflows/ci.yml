@@ -62,13 +62,16 @@ jobs:
 
   build:
     needs: lint-test
-    uses: bhatnagar-afk-dev/build-publisher/.github/workflows/build-native-app.yml@v1
+    uses: bhatnagar-afk-dev/build-publisher/.github/workflows/build-native-app.yml@feat/runner-overrides
     with:
       artifact-name: kuberoot
       artifact-path: bin/
       build-command: wails3 build
-      # macos-latest is Apple Silicon; macos-15-intel adds the amd64 build.
-      runners: '["ubuntu-latest", "macos-latest", "macos-15-intel", "windows-latest"]'
+      # One universal (arm64 + amd64) macOS binary built on Apple Silicon, so
+      # Intel Macs are covered without a separate (slow) Intel runner.
+      runner-overrides: |
+        [{"runner": "macos-latest", "arch": "universal",
+          "build-command": "wails3 task darwin:build:universal"}]
       archive: ${{ github.ref_type == 'tag' }}
       node-version: "22"
       node-cache-dependency-path: frontend/package-lock.json
