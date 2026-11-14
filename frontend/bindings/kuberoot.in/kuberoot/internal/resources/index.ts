@@ -11,9 +11,11 @@ export type {
     NavItem,
     NavStale,
     Navigation,
+    ObjectRef,
     ResourceType,
     Row,
     RowBatch,
     ViewRequest,
-    ViewStatus
+    ViewStatus,
+    YAMLOptions
 } from "./models.js";

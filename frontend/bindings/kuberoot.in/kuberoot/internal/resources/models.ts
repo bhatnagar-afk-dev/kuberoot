@@ -77,6 +77,22 @@ export interface Navigation {
 }
 
 /**
+ * ObjectRef identifies one object for the detail panel.
+ */
+export interface ObjectRef {
+    "contextId": string;
+    "type": ResourceType;
+    "namespace"?: string;
+    "name": string;
+
+    /**
+     * UID selects the object's events (OpenEvents); Describe and YAML
+     * ignore it.
+     */
+    "uid"?: string;
+}
+
+/**
  * ResourceType identifies a listable kind of resource on a cluster.
  */
 export interface ResourceType {
@@ -189,4 +205,19 @@ export interface ViewStatus {
      */
     "reason"?: string;
     "message"?: string;
+}
+
+/**
+ * YAMLOptions controls how an object is rendered as YAML.
+ */
+export interface YAMLOptions {
+    /**
+     * keep metadata.managedFields
+     */
+    "managedFields": boolean;
+
+    /**
+     * show Secret values instead of their sizes
+     */
+    "revealSecrets": boolean;
 }
