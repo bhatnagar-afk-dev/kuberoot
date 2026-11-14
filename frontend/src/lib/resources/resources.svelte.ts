@@ -18,6 +18,10 @@ export { ViewPhase };
 const views = new Map<string, ResourceView>();
 let listening = false;
 let seq = 0;
+// View IDs must be unique per app session. The backend outlives a page load
+// (a webview reload, or a browser tab in server mode), so IDs are prefixed
+// per load.
+const idPrefix = Math.random().toString(36).slice(2, 10);
 
 function listen() {
   if (listening) return;
@@ -56,7 +60,7 @@ export class ResourceView {
   /** Starts the view. Rows from an earlier session stay until the new reset. */
   async open() {
     listen();
-    this.id = `view-${++seq}`;
+    this.id = `view-${idPrefix}-${++seq}`;
     views.set(this.id, this);
     this.status = { viewId: this.id, phase: ViewPhase.ViewLoading };
     const id = this.id;
