@@ -41,11 +41,18 @@
     onclose: () => void;
   } = $props();
 
-  const tabs: { id: Tab; label: string }[] = [
+  const allTabs: { id: Tab; label: string }[] = [
     { id: 'describe', label: 'Describe' },
     { id: 'yaml', label: 'YAML' },
     { id: 'events', label: 'Events' },
   ];
+
+  // Nothing records events about an event, so an Event has no Events tab.
+  const isEvent = $derived(type.resource === 'events' && (type.group === '' || type.group === 'events.k8s.io'));
+  const tabs = $derived(isEvent ? allTabs.filter((t) => t.id !== 'events') : allTabs);
+  // Falls back without forgetting the choice, so the next object that has
+  // the tab opens on it again.
+  const shown: Tab = $derived(tabs.some((t) => t.id === tab) ? tab : 'describe');
 
   const ref: ObjectRef = $derived({
     contextId,
@@ -95,7 +102,7 @@
   </header>
   <div class="tabs" role="tablist">
     {#each tabs as t (t.id)}
-      <button role="tab" aria-selected={tab === t.id} class:active={tab === t.id} onclick={() => (tab = t.id)}>
+      <button role="tab" aria-selected={shown === t.id} class:active={shown === t.id} onclick={() => (tab = t.id)}>
         {t.label}
       </button>
     {/each}
@@ -108,9 +115,9 @@
   <div class="body" role="tabpanel">
     <!-- A new object gets fresh tabs, so nothing from the last one shows. -->
     {#key object.uid}
-      {#if tab === 'describe'}
+      {#if shown === 'describe'}
         <DescribeTab {ref} resourceVersion={object.resourceVersion} {live} />
-      {:else if tab === 'yaml'}
+      {:else if shown === 'yaml'}
         <YamlTab {ref} resourceVersion={object.resourceVersion} {live} />
       {:else}
         <EventsTab {ref} resourceVersion={object.resourceVersion} {live} />
