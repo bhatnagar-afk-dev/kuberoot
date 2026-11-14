@@ -81,3 +81,22 @@ jobs:
     uses: bhatnagar-afk-dev/build-publisher/.github/workflows/release-github.yml@v1
     with:
       artifact-name: kuberoot
+
+  # Single required status check for branch protection. Calling a reusable
+  # workflow prefixes its check names (e.g. "lint-test / Lint & test"), and a
+  # skipped call reports only the caller job's name, so requiring individual
+  # jobs is brittle. This passes when every job succeeded or was skipped.
+  ci-ok:
+    name: CI OK
+    if: always()
+    needs: [changes, lint-test, integration, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check job results
+        env:
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          if [ "$FAILED" = true ]; then
+            echo "::error::One or more CI jobs failed or were cancelled."
+            exit 1
+          fi
