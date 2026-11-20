@@ -10,6 +10,7 @@ import (
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
 	clocktesting "k8s.io/utils/clock/testing"
@@ -423,5 +424,164 @@ func TestConnectionEndMarksStale(t *testing.T) {
 			t.Fatalf("last status = %+v, want stale", last)
 		}
 		time.Sleep(5 * time.Millisecond)
+	}
+}
+
+func TestLabelSelector(t *testing.T) {
+	subs := newFakeSubscriber()
+	// A running unfiltered informer can't serve a filtered view.
+	subs.running[cache.Key{ContextID: "c1", GVR: pods.GVR()}] = true
+	open(t, Request{Type: pods, Namespaces: []string{"web"}, LabelSelector: "app=web"}, subs, Options{})
+	want := cache.Key{ContextID: "c1", GVR: pods.GVR(), Namespace: "web", LabelSelector: "app=web"}
+	subs.mu.Lock()
+	defer subs.mu.Unlock()
+	if _, ok := subs.handlers[want]; !ok || len(subs.handlers) != 1 {
+		t.Errorf("subscribed = %v, want only %v", subs.handlers, want)
+	}
+}
+
+// fakeFilter keeps objects by name.
+type fakeFilter struct {
+	mu      sync.Mutex
+	keep    map[string]bool
+	synced  bool
+	err     error
+	changed chan struct{}
+}
+
+func newFakeFilter(names ...string) *fakeFilter {
+	f := &fakeFilter{keep: map[string]bool{}, synced: true, changed: make(chan struct{}, 1)}
+	for _, n := range names {
+		f.keep[n] = true
+	}
+	return f
+}
+
+func (f *fakeFilter) Keep(o metav1.Object) bool {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.keep[o.GetName()]
+}
+
+func (f *fakeFilter) Changed() <-chan struct{} { return f.changed }
+
+func (f *fakeFilter) State() (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.synced, f.err
+}
+
+func (f *fakeFilter) set(update func(*fakeFilter)) {
+	f.mu.Lock()
+	update(f)
+	f.mu.Unlock()
+}
+
+func TestFilterKeepsOnlyMatchingRows(t *testing.T) {
+	subs := newFakeSubscriber()
+	f := newFakeFilter("mine")
+	v, sink, _ := open(t, Request{Type: pods, Filter: f}, subs, Options{})
+	h := subs.handler(t, "")
+	h.Upsert(row("web", "mine"))
+	h.Upsert(row("web", "other"))
+	h.Synced(nil)
+	v.flush()
+	batches, _ := sink.take()
+	if len(batches) != 1 || !slices.Equal(names(batches[0].Upserts), []string{"web/mine"}) {
+		t.Fatalf("batches = %+v, want only web/mine", batches)
+	}
+
+	// The filter now keeps "other" too: it appears without an informer event.
+	f.set(func(f *fakeFilter) { f.keep["other"] = true })
+	v.recheck()
+	v.flush()
+	batches, _ = sink.take()
+	if len(batches) != 1 || !slices.Equal(names(batches[0].Upserts), []string{"web/other"}) {
+		t.Fatalf("after recheck: batches = %+v, want web/other added", batches)
+	}
+
+	// An update that fails the filter removes the row, like a delete.
+	f.set(func(f *fakeFilter) { delete(f.keep, "mine") })
+	h.Upsert(row("web", "mine"))
+	v.flush()
+	batches, _ = sink.take()
+	if len(batches) != 1 || len(batches[0].Upserts) != 0 || !slices.Equal(batches[0].Deletes, []string{"web/mine"}) {
+		t.Fatalf("after release: batches = %+v, want web/mine deleted", batches)
+	}
+
+	// A deleted object is forgotten, so a recheck can't bring it back.
+	h.Delete(row("web", "mine"))
+	f.set(func(f *fakeFilter) { f.keep["mine"] = true })
+	v.recheck()
+	v.flush()
+	if b, _ := sink.take(); len(b) != 0 {
+		t.Errorf("deleted object came back: %+v", b)
+	}
+}
+
+func TestFilterNotSyncedKeepsLoading(t *testing.T) {
+	subs := newFakeSubscriber()
+	f := newFakeFilter("mine")
+	f.synced = false
+	v, sink, _ := open(t, Request{Type: pods, Filter: f}, subs, Options{})
+	h := subs.handler(t, "")
+	h.Upsert(row("web", "mine"))
+	h.Synced(nil)
+	v.flush()
+	batches, statuses := sink.take()
+	if len(batches) != 0 || len(statuses) != 1 || statuses[0].Phase != resources.ViewLoading {
+		t.Fatalf("batches = %+v, statuses = %+v, want loading and no rows", batches, statuses)
+	}
+	f.set(func(f *fakeFilter) { f.synced = true })
+	v.flush()
+	batches, statuses = sink.take()
+	if len(statuses) != 1 || statuses[0].Phase != resources.ViewReady {
+		t.Errorf("statuses = %+v, want ready", statuses)
+	}
+	if len(batches) != 1 || !batches[0].Reset || !slices.Equal(names(batches[0].Upserts), []string{"web/mine"}) {
+		t.Errorf("batches = %+v, want a reset with web/mine", batches)
+	}
+}
+
+func TestFilterErrorFailsTheView(t *testing.T) {
+	subs := newFakeSubscriber()
+	f := newFakeFilter()
+	f.err = errors.New("no permission to list replicasets")
+	v, sink, _ := open(t, Request{Type: pods, Filter: f}, subs, Options{})
+	h := subs.handler(t, "")
+	h.Upsert(row("web", "other"))
+	h.Synced(nil)
+	v.flush()
+	batches, statuses := sink.take()
+	if st := statuses[0]; st.Phase != resources.ViewError || st.Message != "No permission to list replicasets" {
+		t.Errorf("status = %+v", st)
+	}
+	if len(batches) != 1 || len(batches[0].Upserts) != 0 {
+		t.Errorf("batches = %+v, want an empty reset", batches)
+	}
+}
+
+func TestFilterChangedTriggersRecheck(t *testing.T) {
+	subs := newFakeSubscriber()
+	f := newFakeFilter()
+	v, sink, _ := open(t, Request{Type: pods, Filter: f}, subs, Options{})
+	h := subs.handler(t, "")
+	h.Upsert(row("web", "late"))
+	h.Synced(nil)
+	v.flush()
+	sink.take()
+
+	f.set(func(f *fakeFilter) { f.keep["late"] = true })
+	f.changed <- struct{}{}
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		v.flush()
+		if b, _ := sink.take(); len(b) == 1 && slices.Equal(names(b[0].Upserts), []string{"web/late"}) {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("Changed did not make the view check its rows again")
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }

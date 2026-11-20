@@ -13,6 +13,7 @@ import (
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/utils/clock"
 
 	"kuberoot.in/kuberoot/internal/cluster"
@@ -42,6 +43,24 @@ type Request struct {
 	Namespaces []string // empty means all namespaces; ignored for cluster-scoped types
 	// FieldSelector, if set, limits the rows (e.g. the events of one object).
 	FieldSelector string
+	// LabelSelector, if set, limits the rows (e.g. the pods of a workload).
+	LabelSelector string
+	// Filter, if set, limits the rows further, in the client.
+	Filter Filter
+}
+
+// Filter limits a view's rows beyond what its selectors select on the
+// server, e.g. to the pods a workload owns. Implementations must be safe for
+// concurrent use and must not call into the view.
+type Filter interface {
+	// Keep reports whether the object is shown.
+	Keep(obj metav1.Object) bool
+	// Changed receives a value whenever Keep's answers or State may have
+	// changed. The view is its only reader.
+	Changed() <-chan struct{}
+	// State reports whether the filter is ready to decide, and why it
+	// cannot. Rows are not shown until it is synced.
+	State() (synced bool, err error)
 }
 
 // Options tunes a View. Zero values select defaults.
@@ -53,10 +72,11 @@ type Options struct {
 
 // View is one open table. Close it when it is no longer shown.
 type View struct {
-	id   string
-	typ  resources.ResourceType
-	sink resources.Sink
-	opts Options
+	id     string
+	typ    resources.ResourceType
+	sink   resources.Sink
+	opts   Options
+	filter Filter // nil keeps every row
 
 	mu          sync.Mutex
 	parts       map[string]*part // by namespace; "" for a cluster-wide informer
@@ -67,6 +87,9 @@ type View struct {
 	columns     []resources.Column
 	initialSent bool
 	lastStatus  resources.ViewStatus
+	// candidates are the objects the informers hold, kept or not, by UID;
+	// only used with a filter, to check them again when it changes.
+	candidates map[string]*table.RowObject
 
 	subs      []cache.Subscription
 	stop      chan struct{}
@@ -92,17 +115,19 @@ func Open(s cluster.Session, subs Subscriber, req Request, sink resources.Sink, 
 		opts.Clock = clock.RealClock{}
 	}
 	v := &View{
-		id:      req.ViewID,
-		typ:     req.Type,
-		sink:    sink,
-		opts:    opts,
-		parts:   map[string]*part{},
-		rows:    map[string]resources.Row{},
-		dirty:   map[string]struct{}{},
-		added:   map[string]struct{}{},
-		deleted: map[string]struct{}{},
-		stop:    make(chan struct{}),
-		done:    make(chan struct{}),
+		id:         req.ViewID,
+		typ:        req.Type,
+		sink:       sink,
+		opts:       opts,
+		filter:     req.Filter,
+		parts:      map[string]*part{},
+		rows:       map[string]resources.Row{},
+		dirty:      map[string]struct{}{},
+		added:      map[string]struct{}{},
+		deleted:    map[string]struct{}{},
+		candidates: map[string]*table.RowObject{},
+		stop:       make(chan struct{}),
+		done:       make(chan struct{}),
 	}
 
 	keys, filter := plan(s.ContextID, req, subs)
@@ -127,7 +152,7 @@ func Open(s cluster.Session, subs Subscriber, req Request, sink resources.Sink, 
 // it to the requested namespaces). Otherwise it returns one key per
 // namespace.
 func plan(contextID string, req Request, subs Subscriber) (keys []cache.Key, filter map[string]bool) {
-	all := cache.Key{ContextID: contextID, GVR: req.Type.GVR(), FieldSelector: req.FieldSelector}
+	all := cache.Key{ContextID: contextID, GVR: req.Type.GVR(), FieldSelector: req.FieldSelector, LabelSelector: req.LabelSelector}
 	namespaces := slices.Compact(slices.Sorted(slices.Values(req.Namespaces)))
 	if !req.Type.Namespaced || len(namespaces) == 0 {
 		return []cache.Key{all}, nil
@@ -168,16 +193,37 @@ func (v *View) loop(s cluster.Session) {
 	defer close(v.done)
 	t := v.opts.Clock.NewTicker(v.opts.FlushInterval)
 	defer t.Stop()
+	var changed <-chan struct{} // nil, which never fires, without a filter
+	if v.filter != nil {
+		changed = v.filter.Changed()
+	}
 	for {
 		select {
 		case <-v.stop:
 			return
+		case <-changed:
+			v.recheck()
 		case <-s.Ctx.Done():
 			v.flush()
 			v.sink.Status(resources.ViewStatus{ViewID: v.id, Phase: resources.ViewStale, Message: "Disconnected from the cluster"})
 			return
 		case <-t.C():
 			v.flush()
+		}
+	}
+}
+
+// recheck applies the filter again to every object the informers hold.
+func (v *View) recheck() {
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	for uid, o := range v.candidates {
+		_, shown := v.rows[uid]
+		switch keep := v.filter.Keep(o); {
+		case keep && !shown:
+			v.upsertLocked(o.Row())
+		case !keep && shown:
+			v.removeLocked(uid)
 		}
 	}
 }
@@ -255,8 +301,14 @@ func (v *View) statusLocked() resources.ViewStatus {
 			loading = true
 		}
 	}
+	var filterErr error
+	if v.filter != nil {
+		var synced bool
+		synced, filterErr = v.filter.State()
+		loading = loading || !synced
+	}
 	switch {
-	case failed == len(v.parts):
+	case failed == len(v.parts) || filterErr != nil:
 		st.Phase = resources.ViewError
 	case loading:
 		st.Phase = resources.ViewLoading
@@ -273,12 +325,23 @@ func (v *View) statusLocked() resources.ViewStatus {
 	if len(other) > 0 {
 		msgs = append(msgs, fmt.Sprintf("Could not list %s: %s", v.typ.Resource, other[0]))
 	}
+	if filterErr != nil {
+		msgs = append(msgs, sentence(redact.String(filterErr.Error())))
+	}
 	st.Message = strings.Join(msgs, ". ")
 	return st
 }
 
 func sameStatus(a, b resources.ViewStatus) bool {
 	return a.ViewID == b.ViewID && a.Phase == b.Phase && a.Reason == b.Reason && a.Message == b.Message && slices.Equal(a.Forbidden, b.Forbidden)
+}
+
+// sentence capitalizes an error message for display.
+func sentence(s string) string {
+	if s == "" {
+		return s
+	}
+	return strings.ToUpper(s[:1]) + s[1:]
 }
 
 func quoteList(names []string) string {
@@ -310,15 +373,17 @@ func (h *handler) Upsert(o *table.RowObject) {
 		return
 	}
 	v := h.view
-	r := o.Row()
 	v.mu.Lock()
 	defer v.mu.Unlock()
-	if _, known := v.rows[r.UID]; !known {
-		v.added[r.UID] = struct{}{}
+	if v.filter != nil {
+		v.candidates[string(o.UID)] = o
+		if !v.filter.Keep(o) {
+			// It may have been kept before (e.g. released by its owner).
+			v.removeLocked(string(o.UID))
+			return
+		}
 	}
-	v.rows[r.UID] = r
-	v.dirty[r.UID] = struct{}{}
-	delete(v.deleted, r.UID)
+	v.upsertLocked(o.Row())
 }
 
 func (h *handler) Delete(o *table.RowObject) {
@@ -329,6 +394,20 @@ func (h *handler) Delete(o *table.RowObject) {
 	uid := string(o.UID)
 	v.mu.Lock()
 	defer v.mu.Unlock()
+	delete(v.candidates, uid)
+	v.removeLocked(uid)
+}
+
+func (v *View) upsertLocked(r resources.Row) {
+	if _, known := v.rows[r.UID]; !known {
+		v.added[r.UID] = struct{}{}
+	}
+	v.rows[r.UID] = r
+	v.dirty[r.UID] = struct{}{}
+	delete(v.deleted, r.UID)
+}
+
+func (v *View) removeLocked(uid string) {
 	if _, ok := v.rows[uid]; !ok {
 		return
 	}
