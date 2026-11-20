@@ -55,6 +55,15 @@ export function OpenEvents(viewID: string, ref: resources$0.ObjectRef): $Cancell
 }
 
 /**
+ * OpenPods starts a live view of the pods of a workload (the pods it owns)
+ * or a Service (the pods its selector matches). viewID is chosen by the UI
+ * as for Open.
+ */
+export function OpenPods(viewID: string, ref: resources$0.ObjectRef): $CancellablePromise<void> {
+    return $Call.ByID(2084105280, viewID, ref);
+}
+
+/**
  * RefreshNavigation re-reads the cluster's resource types and returns the
  * new tree.
  */
