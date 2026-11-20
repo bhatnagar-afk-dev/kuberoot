@@ -78,7 +78,7 @@ func (f *fakeServer) lastRequest() *http.Request {
 
 func newTestSource(t *testing.T, srv *fakeServer, gvr schema.GroupVersionResource, ns string) *Source {
 	t.Helper()
-	s, err := NewSource(&rest.Config{Host: srv.URL}, gvr, ns, "")
+	s, err := NewSource(&rest.Config{Host: srv.URL}, gvr, ns, Selectors{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -146,38 +146,44 @@ func TestPaths(t *testing.T) {
 	}
 }
 
-func TestFieldSelector(t *testing.T) {
+func TestSelectors(t *testing.T) {
 	srv := newFakeServer(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Query().Get("watch") == "true" {
 			return // an empty watch stream
 		}
 		fmt.Fprint(w, tableJSON("10", true))
 	})
-	s, err := NewSource(&rest.Config{Host: srv.URL}, podsGVR, "web", "involvedObject.uid=u1")
+	s, err := NewSource(&rest.Config{Host: srv.URL}, podsGVR, "web", Selectors{Field: "involvedObject.uid=u1", Label: "app=web"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	// The reflector's options must not replace the source's selector.
-	if _, err := s.ListWithContext(context.Background(), metav1.ListOptions{FieldSelector: "other=x"}); err != nil {
+	check := func(op string) {
+		t.Helper()
+		q := srv.lastRequest().URL.Query()
+		if got := q.Get("fieldSelector"); got != "involvedObject.uid=u1" {
+			t.Errorf("%s fieldSelector = %q", op, got)
+		}
+		if got := q.Get("labelSelector"); got != "app=web" {
+			t.Errorf("%s labelSelector = %q", op, got)
+		}
+	}
+	// The reflector's options must not replace the source's selectors.
+	if _, err := s.ListWithContext(context.Background(), metav1.ListOptions{FieldSelector: "other=x", LabelSelector: "other=y"}); err != nil {
 		t.Fatal(err)
 	}
-	if got := srv.lastRequest().URL.Query().Get("fieldSelector"); got != "involvedObject.uid=u1" {
-		t.Errorf("list fieldSelector = %q", got)
-	}
+	check("list")
 	w, err := s.WatchWithContext(context.Background(), metav1.ListOptions{ResourceVersion: "10"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	w.Stop()
-	if got := srv.lastRequest().URL.Query().Get("fieldSelector"); got != "involvedObject.uid=u1" {
-		t.Errorf("watch fieldSelector = %q", got)
-	}
+	check("watch")
 }
 
 func TestServerPathPrefix(t *testing.T) {
 	srv := newFakeServer(t, func(w http.ResponseWriter, _ *http.Request) { fmt.Fprint(w, tableJSON("1", true)) })
 	// Proxied clusters (e.g. Rancher) put the API under a path prefix.
-	s, err := NewSource(&rest.Config{Host: srv.URL + "/k8s/clusters/c-1"}, podsGVR, "", "")
+	s, err := NewSource(&rest.Config{Host: srv.URL + "/k8s/clusters/c-1"}, podsGVR, "", Selectors{})
 	if err != nil {
 		t.Fatal(err)
 	}

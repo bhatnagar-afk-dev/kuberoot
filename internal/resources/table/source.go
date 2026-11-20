@@ -34,32 +34,39 @@ var fallbackColumns = []resources.Column{
 	{Name: "Age", Type: "string"},
 }
 
+// Selectors limit the objects a Source lists. Empty selectors select
+// everything.
+type Selectors struct {
+	Field string // e.g. "involvedObject.uid=..."
+	Label string // e.g. "app=web"
+}
+
 // Source lists and watches one resource type in one namespace ("" for all
-// namespaces or cluster-scoped types) as table rows, optionally limited by a
-// field selector. It implements
+// namespaces or cluster-scoped types) as table rows, optionally limited by
+// field and label selectors. It implements
 // cache.ListerWatcherWithContext. Column definitions are taken from the most
 // recent LIST.
 type Source struct {
 	client    rest.Interface
 	gvr       schema.GroupVersionResource
 	namespace string
-	selector  string // field selector; "" selects everything
+	selectors Selectors
 
 	mu           sync.Mutex
 	columns      []resources.Column
 	metadataOnly bool // server rejected the Table format; use fallbackColumns
 }
 
-// NewSource returns a Source for gvr in namespace using cfg. fieldSelector
-// (e.g. "involvedObject.uid=...") limits the rows; "" selects all.
-func NewSource(cfg *rest.Config, gvr schema.GroupVersionResource, namespace, fieldSelector string) (*Source, error) {
+// NewSource returns a Source for gvr in namespace using cfg, limited to the
+// objects sel selects.
+func NewSource(cfg *rest.Config, gvr schema.GroupVersionResource, namespace string, sel Selectors) (*Source, error) {
 	c := rest.CopyConfig(cfg)
 	c.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
 	client, err := rest.UnversionedRESTClientFor(c)
 	if err != nil {
 		return nil, fmt.Errorf("rest client: %w", err)
 	}
-	return &Source{client: client, gvr: gvr, namespace: namespace, selector: fieldSelector}, nil
+	return &Source{client: client, gvr: gvr, namespace: namespace, selectors: sel}, nil
 }
 
 // Columns returns the column definitions from the last LIST, or nil before
@@ -155,7 +162,8 @@ func (s *Source) request(opts metav1.ListOptions, accept string) *rest.Request {
 		path = append(path, "namespaces", s.namespace)
 	}
 	path = append(path, s.gvr.Resource)
-	opts.FieldSelector = s.selector
+	opts.FieldSelector = s.selectors.Field
+	opts.LabelSelector = s.selectors.Label
 	return s.client.Get().
 		AbsPath(path...).
 		SpecificallyVersionedParams(&opts, metav1.ParameterCodec, metav1.SchemeGroupVersion).
