@@ -15,4 +15,4 @@ KEPs but lighter-weight.
 |---|-------|--------|
 | [0001](0001-cluster-management.md) | Cluster management | Implemented |
 | [0002](0002-resource-browsing.md) | Resource browsing | Implemented |
-| [0003](0003-logs.md) | Logs | Provisional |
+| [0003](0003-logs.md) | Logs | Implementable |
