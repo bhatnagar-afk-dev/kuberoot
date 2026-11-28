@@ -95,6 +95,9 @@ func TestObjectDetailsNotConnected(t *testing.T) {
 	if err := s.OpenEvents("e1", ref); err == nil || err.Error() != cluster.ErrNotConnected.Error() {
 		t.Errorf("OpenEvents err = %v, want %v", err, cluster.ErrNotConnected)
 	}
+	if err := s.OpenPods("p1", ref); err == nil || err.Error() != cluster.ErrNotConnected.Error() {
+		t.Errorf("OpenPods err = %v, want %v", err, cluster.ErrNotConnected)
+	}
 }
 
 func TestSavedNamespaces(t *testing.T) {

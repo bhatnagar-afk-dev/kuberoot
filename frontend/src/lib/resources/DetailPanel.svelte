@@ -1,5 +1,5 @@
 <script lang="ts" module>
-  type Tab = 'describe' | 'yaml' | 'events';
+  type Tab = 'describe' | 'yaml' | 'events' | 'pods';
 
   // Kept for the app session, so moving between objects stays on one tab.
   let tab: Tab = $state('describe');
@@ -19,10 +19,12 @@
 </script>
 
 <script lang="ts">
+  import { onDestroy, untrack } from 'svelte';
   import DescribeTab from './detail/DescribeTab.svelte';
   import EventsTab from './detail/EventsTab.svelte';
+  import PodsTab from './detail/PodsTab.svelte';
   import YamlTab from './detail/YamlTab.svelte';
-  import type { ObjectRef, ResourceType, Row } from './resources.svelte';
+  import { PodsView, ViewPhase, podsType, selectsPods, type ObjectRef, type ResourceType, type Row } from './resources.svelte';
 
   let {
     contextId,
@@ -45,23 +47,86 @@
     { id: 'describe', label: 'Describe' },
     { id: 'yaml', label: 'YAML' },
     { id: 'events', label: 'Events' },
+    { id: 'pods', label: 'Pods' },
   ];
 
-  // Nothing records events about an event, so an Event has no Events tab.
-  const isEvent = $derived(type.resource === 'events' && (type.group === '' || type.group === 'events.k8s.io'));
-  const tabs = $derived(isEvent ? allTabs.filter((t) => t.id !== 'events') : allTabs);
-  // Falls back without forgetting the choice, so the next object that has
-  // the tab opens on it again.
-  const shown: Tab = $derived(tabs.some((t) => t.id === tab) ? tab : 'describe');
+  function tabsOf(t: ResourceType) {
+    // Nothing records events about an event, so an Event has no Events tab.
+    const isEvent = t.resource === 'events' && (t.group === '' || t.group === 'events.k8s.io');
+    return allTabs.filter((x) => (x.id !== 'events' || !isEvent) && (x.id !== 'pods' || selectsPods(t)));
+  }
 
-  const ref: ObjectRef = $derived({
-    contextId,
-    type,
-    namespace: object.namespace ?? '',
-    name: object.name,
-    uid: object.uid,
+  function refOf(t: ResourceType, o: Row): ObjectRef {
+    return { contextId, type: t, namespace: o.namespace ?? '', name: o.name, uid: o.uid };
+  }
+
+  const ref: ObjectRef = $derived(refOf(type, object));
+
+  // The Pods tab's view lives here rather than in the tab, so a pod opened
+  // from it stays live and Back returns to the same rows. It opens when the
+  // tab is first shown and closes when the panel moves to another object.
+  let podsView: PodsView | undefined = $state.raw();
+  // A pod opened from the Pods tab, shown instead of the object until Back.
+  let pod: Row | undefined = $state.raw();
+
+  let viewFor = untrack(() => object.uid);
+  $effect(() => {
+    const uid = object.uid;
+    untrack(() => {
+      if (uid === viewFor) return;
+      viewFor = uid;
+      pod = undefined;
+      podsView?.close();
+      podsView = undefined;
+    });
   });
-  const live = $derived(connected && !deleted);
+  onDestroy(() => podsView?.close());
+
+  // The pod's live row; once it is gone, the last known state stays.
+  const livePod = $derived(pod && podsView?.rows.find((r) => r.uid === pod!.uid));
+  $effect(() => {
+    if (livePod) pod = livePod;
+  });
+
+  const shownType = $derived(pod ? podsType : type);
+  const shownObject = $derived(pod ?? object);
+  const shownDeleted = $derived(pod ? !livePod && podsView?.status.phase !== ViewPhase.ViewLoading : deleted);
+  const shownRef = $derived(refOf(shownType, shownObject));
+  const tabs = $derived(tabsOf(shownType));
+  // Falls back without forgetting the choice, so the next object that has
+  // the tab opens on it again (and Back from a pod returns to Pods).
+  const shown: Tab = $derived(tabs.some((t) => t.id === tab) ? tab : 'describe');
+  const live = $derived(connected && !shownDeleted);
+
+  $effect(() => {
+    if (shown !== 'pods' || podsView) return;
+    untrack(() => {
+      podsView = new PodsView(ref);
+      void podsView.open();
+    });
+  });
+
+  // Views die with the connection they were opened on.
+  let wasConnected = untrack(() => connected);
+  $effect(() => {
+    const now = connected;
+    untrack(() => {
+      if (now && !wasConnected) void podsView?.reopen();
+      wasConnected = now;
+    });
+  });
+
+  // A Service's selector can change; workload selectors cannot. Only a new
+  // version of the same object counts: another object gets a new view.
+  let podsFor = untrack(() => ({ uid: object.uid, rv: object.resourceVersion }));
+  $effect(() => {
+    const now = { uid: object.uid, rv: object.resourceVersion };
+    untrack(() => {
+      const changed = now.uid === podsFor.uid && now.rv !== podsFor.rv;
+      podsFor = now;
+      if (changed && type.group === '' && type.resource === 'services' && !deleted) podsView?.reopenSoon();
+    });
+  });
 
   let width = $state(savedWidth());
   let panel: HTMLElement;
@@ -89,14 +154,19 @@
   }
 </script>
 
-<aside class="panel" style:width="{width}px" bind:this={panel} aria-label="{type.kind} {object.name}">
+<aside class="panel" style:width="{width}px" bind:this={panel} aria-label="{shownType.kind} {shownObject.name}">
   <!-- svelte-ignore a11y_no_static_element_interactions -->
   <div class="resize" onpointerdown={startResize} title="Drag to resize"></div>
+  {#if pod}
+    <button class="back" onclick={() => (pod = undefined)} title="Back to {type.kind.toLowerCase()} {object.name}">
+      ‹ {type.kind} {object.name}
+    </button>
+  {/if}
   <header>
     <div class="title">
-      <span class="kind">{type.kind}</span>
-      <h3 title={object.name}>{object.name}</h3>
-      {#if object.namespace}<span class="ns" title="Namespace">{object.namespace}</span>{/if}
+      <span class="kind">{shownType.kind}</span>
+      <h3 title={shownObject.name}>{shownObject.name}</h3>
+      {#if shownObject.namespace}<span class="ns" title="Namespace">{shownObject.namespace}</span>{/if}
     </div>
     <button class="close" onclick={onclose} title="Close (Esc)" aria-label="Close details">✕</button>
   </header>
@@ -107,20 +177,22 @@
       </button>
     {/each}
   </div>
-  {#if deleted}
-    <div class="banner" role="status">This {type.kind.toLowerCase()} was deleted. Showing its last known state.</div>
+  {#if shownDeleted}
+    <div class="banner" role="status">This {shownType.kind.toLowerCase()} was deleted. Showing its last known state.</div>
   {:else if !connected}
     <div class="banner" role="status">Disconnected. Showing the last loaded details.</div>
   {/if}
   <div class="body" role="tabpanel">
     <!-- A new object gets fresh tabs, so nothing from the last one shows. -->
-    {#key object.uid}
+    {#key shownObject.uid}
       {#if shown === 'describe'}
-        <DescribeTab {ref} resourceVersion={object.resourceVersion} {live} />
+        <DescribeTab ref={shownRef} resourceVersion={shownObject.resourceVersion} {live} />
       {:else if shown === 'yaml'}
-        <YamlTab {ref} resourceVersion={object.resourceVersion} {live} />
-      {:else}
-        <EventsTab {ref} resourceVersion={object.resourceVersion} {live} />
+        <YamlTab ref={shownRef} resourceVersion={shownObject.resourceVersion} {live} />
+      {:else if shown === 'events'}
+        <EventsTab ref={shownRef} resourceVersion={shownObject.resourceVersion} {live} />
+      {:else if podsView}
+        <PodsTab view={podsView} onopen={(r) => (pod = r)} />
       {/if}
     {/key}
   </div>
@@ -186,6 +258,14 @@
     padding: 2px 6px;
     border-radius: 4px;
   }
+  .back {
+    align-self: flex-start;
+    margin: 8px 8px 0;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-size: 12px;
+  }
+  .back:hover { background: var(--hover); color: var(--text); }
   .close:hover { background: var(--hover); color: var(--text); }
   .tabs {
     display: flex;

@@ -137,6 +137,52 @@ export class EventsView extends ResourceView {
   }
 }
 
+/** core/v1 pods. */
+export const podsType: ResourceType = { group: '', version: 'v1', resource: 'pods', kind: 'Pod', namespaced: true };
+
+/** Types whose objects have pods, and so a Pods tab. Matches workload.SelectsPods. */
+const podOwners = new Set(['apps/deployments', 'apps/statefulsets', 'apps/daemonsets', 'apps/replicasets', 'batch/jobs', '/services']);
+
+export function selectsPods(t: ResourceType): boolean {
+  return podOwners.has(`${t.group}/${t.resource}`);
+}
+
+/** How often a Service's pods view may be reopened for a changed selector. */
+const REOPEN_INTERVAL = 2000;
+
+/** The live pods of a workload (the pods it owns) or a Service (the pods its selector matches). */
+export class PodsView extends ResourceView {
+  private ref: ObjectRef;
+  private lastReopen = 0;
+  private timer: ReturnType<typeof setTimeout> | undefined;
+
+  constructor(ref: ObjectRef) {
+    super({ contextId: ref.contextId, type: podsType, namespaces: [ref.namespace ?? ''] });
+    this.ref = ref;
+  }
+
+  protected override start(id: string): Promise<void> {
+    return ResourceService.OpenPods(id, this.ref);
+  }
+
+  /** Reopens soon, at most once per interval: a Service's selector may have changed. */
+  reopenSoon() {
+    if (this.timer !== undefined) return;
+    const wait = Math.max(0, this.lastReopen + REOPEN_INTERVAL - Date.now());
+    this.timer = setTimeout(() => {
+      this.timer = undefined;
+      this.lastReopen = Date.now();
+      void this.reopen();
+    }, wait);
+  }
+
+  override close() {
+    clearTimeout(this.timer);
+    this.timer = undefined;
+    super.close();
+  }
+}
+
 /**
  * Reopens view whenever connected() turns true again: views die with the
  * connection they were opened on. Call during component initialisation.

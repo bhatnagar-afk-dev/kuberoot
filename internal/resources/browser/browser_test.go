@@ -76,7 +76,7 @@ func (nopSink) Status(resources.ViewStatus) {}
 
 func newBrowser(t *testing.T, conns resources.Connections, subs *fakeSubscriber) *Browser {
 	t.Helper()
-	b := New(conns, subs, func(resources.ViewRequest) resources.Sink { return nopSink{} },
+	b := New(conns, subs, nil, func(resources.ViewRequest) resources.Sink { return nopSink{} },
 		view.Options{Clock: clocktesting.NewFakeClock(time.Now())})
 	t.Cleanup(b.CloseAll)
 	return b
@@ -111,7 +111,7 @@ func TestOpenAndClose(t *testing.T) {
 func TestOpenEvents(t *testing.T) {
 	subs := &fakeSubscriber{}
 	var sinkReq resources.ViewRequest
-	b := New(fakeConns{ctx: t.Context()}, subs, func(r resources.ViewRequest) resources.Sink { sinkReq = r; return nopSink{} },
+	b := New(fakeConns{ctx: t.Context()}, subs, nil, func(r resources.ViewRequest) resources.Sink { sinkReq = r; return nopSink{} },
 		view.Options{Clock: clocktesting.NewFakeClock(time.Now())})
 	t.Cleanup(b.CloseAll)
 

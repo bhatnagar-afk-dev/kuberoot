@@ -22,6 +22,7 @@ import (
 	"kuberoot.in/kuberoot/internal/resources/describe/kubectl"
 	"kuberoot.in/kuberoot/internal/resources/object"
 	"kuberoot.in/kuberoot/internal/resources/view"
+	"kuberoot.in/kuberoot/internal/resources/workload"
 )
 
 const itTimeout = 60 * time.Second
@@ -138,7 +139,7 @@ func TestIntegrationObjectDetails(t *testing.T) {
 		informers := cache.New(cache.Options{})
 		t.Cleanup(informers.Close)
 		batches := make(chanSink, 100)
-		b := New(sessionConns{s}, informers, func(resources.ViewRequest) resources.Sink { return batches }, view.Options{})
+		b := New(sessionConns{s}, informers, workload.Matcher{Subscriber: informers}, func(resources.ViewRequest) resources.Sink { return batches }, view.Options{})
 		t.Cleanup(b.CloseAll)
 		if err := b.OpenEvents("e1", ref); err != nil {
 			t.Fatal(err)

@@ -4,15 +4,20 @@
 package browser
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"maps"
 	"slices"
 	"sync"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+
+	"kuberoot.in/kuberoot/internal/cluster"
 	"kuberoot.in/kuberoot/internal/redact"
 	"kuberoot.in/kuberoot/internal/resources"
 	"kuberoot.in/kuberoot/internal/resources/view"
+	"kuberoot.in/kuberoot/internal/resources/workload"
 )
 
 // SinkFactory returns the sink that receives one view's output.
@@ -25,34 +30,93 @@ var ErrClosed = errors.New("resource browser is closed")
 type Browser struct {
 	conns resources.Connections
 	subs  view.Subscriber
+	pods  workload.PodMatcher
 	sinks SinkFactory
 	opts  view.Options
 
 	mu      sync.Mutex
-	views   map[string]*view.View
+	views   map[string]closer
 	pending map[string]bool // views being opened; true if Close was called meanwhile
 	closed  bool
 }
 
-// New returns a Browser. opts tunes every view it opens.
-func New(conns resources.Connections, subs view.Subscriber, sinks SinkFactory, opts view.Options) *Browser {
-	return &Browser{conns: conns, subs: subs, sinks: sinks, opts: opts, views: map[string]*view.View{}, pending: map[string]bool{}}
+// closer is an open view.
+type closer interface{ Close() }
+
+// New returns a Browser. pods finds the pods of workloads for OpenPods; opts
+// tunes every view it opens.
+func New(conns resources.Connections, subs view.Subscriber, pods workload.PodMatcher, sinks SinkFactory, opts view.Options) *Browser {
+	return &Browser{conns: conns, subs: subs, pods: pods, sinks: sinks, opts: opts, views: map[string]closer{}, pending: map[string]bool{}}
 }
 
 // Open starts a view. Its rows and status go to the sink for req.ViewID.
 func (b *Browser) Open(req resources.ViewRequest) error {
-	return b.start(req, view.Request{ViewID: req.ViewID, Type: req.Type, Namespaces: req.Namespaces})
+	return b.start(req, b.openView(req, view.Request{ViewID: req.ViewID, Type: req.Type, Namespaces: req.Namespaces}))
 }
 
 // OpenEvents starts a view of the events about one object, like the Events
 // section of `kubectl describe`. Its rows go to the sink for viewID.
 func (b *Browser) OpenEvents(viewID string, ref resources.ObjectRef) error {
 	vr := EventsRequest(viewID, ref)
-	return b.start(resources.ViewRequest{ViewID: viewID, ContextID: ref.ContextID, Type: vr.Type, Namespaces: vr.Namespaces}, vr)
+	req := resources.ViewRequest{ViewID: viewID, ContextID: ref.ContextID, Type: vr.Type, Namespaces: vr.Namespaces}
+	return b.start(req, b.openView(req, vr))
 }
 
-// start opens the view vr; req describes it to the sink factory.
-func (b *Browser) start(req resources.ViewRequest, vr view.Request) error {
+// OpenPods starts a view of the pods of a workload (the pods it owns) or a
+// Service (the pods its selector matches). Its rows go to the sink for
+// viewID. An object that does not select pods is an error wrapping
+// workload.ErrNoPods.
+func (b *Browser) OpenPods(viewID string, ref resources.ObjectRef) error {
+	req := resources.ViewRequest{ViewID: viewID, ContextID: ref.ContextID, Type: workload.PodsType, Namespaces: []string{ref.Namespace}}
+	return b.start(req, func(s cluster.Session) (closer, error) {
+		ctx, cancel := context.WithTimeout(s.Ctx, objectTimeout)
+		defer cancel()
+		m, err := b.pods.Match(ctx, s, ref)
+		if err != nil {
+			return nil, err
+		}
+		vr := view.Request{
+			ViewID:        viewID,
+			Type:          workload.PodsType,
+			Namespaces:    req.Namespaces,
+			LabelSelector: m.Selector().String(),
+			Filter:        ownedBy{m},
+		}
+		v, err := b.openView(req, vr)(s)
+		if err != nil {
+			m.Close()
+			return nil, err
+		}
+		return podsView{v, m}, nil
+	})
+}
+
+// openView returns a function that opens vr; req describes it to the sink
+// factory.
+func (b *Browser) openView(req resources.ViewRequest, vr view.Request) func(cluster.Session) (closer, error) {
+	return func(s cluster.Session) (closer, error) {
+		return view.Open(s, b.subs, vr, b.sinks(req), b.opts)
+	}
+}
+
+// ownedBy filters a pods view by a workload's Membership.
+type ownedBy struct{ workload.Membership }
+
+func (o ownedBy) Keep(pod metav1.Object) bool { return o.Owns(pod) }
+
+// podsView is a pods view and the membership that filters it.
+type podsView struct {
+	closer
+	m workload.Membership
+}
+
+func (p podsView) Close() {
+	p.closer.Close()
+	p.m.Close()
+}
+
+// start opens a view with openFn, once the ID is reserved; req names it.
+func (b *Browser) start(req resources.ViewRequest, openFn func(cluster.Session) (closer, error)) error {
 	if req.ViewID == "" {
 		return errors.New("view ID is empty")
 	}
@@ -70,7 +134,7 @@ func (b *Browser) start(req resources.ViewRequest, vr view.Request) error {
 	b.pending[req.ViewID] = false // reserve the ID without holding the lock while opening
 	b.mu.Unlock()
 
-	v, err := b.open(req, vr)
+	v, err := b.open(req, openFn)
 
 	b.mu.Lock()
 	closed := b.closed
@@ -90,13 +154,16 @@ func (b *Browser) start(req resources.ViewRequest, vr view.Request) error {
 	return err
 }
 
-func (b *Browser) open(req resources.ViewRequest, vr view.Request) (*view.View, error) {
+func (b *Browser) open(req resources.ViewRequest, openFn func(cluster.Session) (closer, error)) (closer, error) {
 	s, err := b.conns.Session(req.ContextID)
 	if err != nil {
 		return nil, errors.New(redact.String(err.Error()))
 	}
-	v, err := view.Open(s, b.subs, vr, b.sinks(req), b.opts)
-	if err != nil {
+	v, err := openFn(s)
+	switch {
+	case errors.Is(err, workload.ErrNoPods):
+		return nil, err // says what it is; nothing to redact
+	case err != nil:
 		return nil, fmt.Errorf("open %s: %s", req.Type.Resource, redact.String(err.Error()))
 	}
 	return v, nil
