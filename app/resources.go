@@ -16,6 +16,7 @@ import (
 	"kuberoot.in/kuberoot/internal/resources/nav/curated"
 	"kuberoot.in/kuberoot/internal/resources/object"
 	"kuberoot.in/kuberoot/internal/resources/view"
+	"kuberoot.in/kuberoot/internal/resources/workload"
 	"kuberoot.in/kuberoot/internal/settings"
 )
 
@@ -60,7 +61,7 @@ func (s *ResourceService) ServiceStartup(context.Context, application.ServiceOpt
 
 func (s *ResourceService) start() {
 	s.informers = cache.New(cache.Options{})
-	s.browser = browser.New(sessions{s.clusters}, s.informers, s.sink, view.Options{})
+	s.browser = browser.New(sessions{s.clusters}, s.informers, workload.Matcher{Subscriber: s.informers}, s.sink, view.Options{})
 	s.catalogs = browser.NewCatalogs(sessions{s.clusters}, newCatalog, curated.Navigator{}, func(id string) {
 		s.emit(EventNavStale, resources.NavStale{ContextID: id})
 	}, browser.CatalogOptions{})
@@ -98,6 +99,13 @@ func (s *ResourceService) Close(viewID string) {
 // chosen by the UI as for Open.
 func (s *ResourceService) OpenEvents(viewID string, ref resources.ObjectRef) error {
 	return s.browser.OpenEvents(viewID, ref)
+}
+
+// OpenPods starts a live view of the pods of a workload (the pods it owns)
+// or a Service (the pods its selector matches). viewID is chosen by the UI
+// as for Open.
+func (s *ResourceService) OpenPods(viewID string, ref resources.ObjectRef) error {
+	return s.browser.OpenPods(viewID, ref)
 }
 
 // Describe returns `kubectl describe` output for one object.

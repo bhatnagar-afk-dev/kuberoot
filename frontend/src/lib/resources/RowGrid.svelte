@@ -11,6 +11,7 @@
     wide,
     selected,
     onselect,
+    onopen,
   }: {
     columns: DisplayColumn[];
     rows: Row[];
@@ -24,6 +25,8 @@
     selected?: string;
     /** Makes rows selectable (click, ↑/↓). */
     onselect?: (row: Row) => void;
+    /** Makes rows open something (click, or Enter on the selected row). */
+    onopen?: (row: Row) => void;
   } = $props();
 
   const ROW_HEIGHT = 28;
@@ -68,6 +71,14 @@
   }
 
   function onkeydown(e: KeyboardEvent) {
+    if (e.key === 'Enter' && onopen) {
+      const row = sorted.find((r) => r.uid === selected);
+      if (row) {
+        e.preventDefault();
+        onopen(row);
+      }
+      return;
+    }
     if (!onselect || (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') || sorted.length === 0) return;
     e.preventDefault();
     const i = sorted.findIndex((r) => r.uid === selected);
@@ -84,7 +95,7 @@
 <div
   class="scroll"
   role="grid"
-  tabindex={onselect ? 0 : -1}
+  tabindex={onselect || onopen ? 0 : -1}
   aria-rowcount={sorted.length}
   bind:this={scroller}
   bind:clientHeight={viewportHeight}
@@ -114,14 +125,17 @@
         <!-- svelte-ignore a11y_click_events_have_key_events (the grid handles ↑/↓) -->
         <div
           class="row"
-          class:selectable={!!onselect}
+          class:selectable={!!onselect || !!onopen}
           class:selected={row.uid === selected}
           role="row"
           tabindex="-1"
           aria-selected={row.uid === selected}
           style:grid-template-columns={template}
           style:transform="translateY({(range.start + i) * ROW_HEIGHT}px)"
-          onclick={() => onselect?.(row)}
+          onclick={() => {
+            onselect?.(row);
+            onopen?.(row);
+          }}
         >
           {#each columns as col, j (j)}
             {@const text = displayText(col, row, clock.now)}

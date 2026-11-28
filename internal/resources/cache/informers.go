@@ -33,13 +33,15 @@ const (
 )
 
 // Key identifies one informer. Namespace "" means all namespaces (or a
-// cluster-scoped type). FieldSelector, if set, limits the informer to the
-// matching objects.
+// cluster-scoped type). FieldSelector and LabelSelector, if set, limit the
+// informer to the matching objects; use their canonical forms (sorted terms),
+// so one selection always maps to one informer.
 type Key struct {
 	ContextID     string
 	GVR           schema.GroupVersionResource
 	Namespace     string
 	FieldSelector string
+	LabelSelector string
 }
 
 // Source lists and watches rows for one Key. *table.Source implements it.
@@ -53,7 +55,7 @@ type SourceFactory func(s cluster.Session, k Key) (Source, error)
 
 // TableSources is the default SourceFactory.
 func TableSources(s cluster.Session, k Key) (Source, error) {
-	return table.NewSource(s.Config, k.GVR, k.Namespace, k.FieldSelector)
+	return table.NewSource(s.Config, k.GVR, k.Namespace, table.Selectors{Field: k.FieldSelector, Label: k.LabelSelector})
 }
 
 // Handler receives a subscription's events. Upsert and Delete calls are
